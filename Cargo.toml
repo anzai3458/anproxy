@@ -1,0 +1,10 @@
+[package]
+name = "anproxy"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.43.0", features = ["full"] }
+rustls = "0.23.23"
+tokio-rustls = "0.26.1"
+argh = "0.1.1"
