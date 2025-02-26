@@ -1,5 +1,3 @@
-mod example;
-
 use std::io;
 use std::net::ToSocketAddrs;
 use std::path::PathBuf;
