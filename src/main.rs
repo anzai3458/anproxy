@@ -66,12 +66,10 @@ async fn main() -> Result<(), Box<dyn StdError + Send + Sync + 'static>> {
             let (mut client_reader, mut client_writer) = split(client_stream);
             let (mut target_reader, mut target_writer) = target_stream.split();
 
-            let (client_to_target, target_to_client) = tokio::join!(
-                copy(&mut client_reader, &mut target_writer),
-                copy(&mut target_reader, &mut client_writer)
+            tokio::select!(
+                res = copy(&mut client_reader, &mut target_writer) => res?,
+                res = copy(&mut target_reader, &mut client_writer) => res?
             );
-            client_to_target?;
-            target_to_client?;
 
             Ok(()) as io::Result<()>
         };
