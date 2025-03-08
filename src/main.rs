@@ -5,15 +5,20 @@ use std::path::PathBuf;
 use argh::FromArgs;
 use http_body_util::combinators::BoxBody;
 use http_body_util::BodyExt;
+use hyper::body::{Body, Bytes, Incoming};
+use hyper::client::conn::http1::SendRequest;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
-use hyper::{Response, StatusCode};
+use hyper::upgrade::OnUpgrade;
+use hyper::{header, upgrade, Error, Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
 use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use std::error::Error as StdError;
 use std::sync::Arc;
+use tokio::io::split;
 use tokio::net::{TcpListener, TcpStream};
+use tokio::{io, select};
 use tokio_rustls::{rustls, TlsAcceptor};
 
 /// Simple https reverse proxy
@@ -114,62 +119,15 @@ async fn process(
     let client_stream = acceptor.accept(stream).await.map_err(|e| e.to_string())?;
     let client_io = TokioIo::new(client_stream);
 
-    let service = service_fn(move |mut req| {
+    let service = service_fn(move |req| {
         let inner_targets = targets.clone();
-
-        async move {
-            let target_addr = req
-                .headers()
-                .get("Host")
-                .and_then(|h| h.to_str().ok())
-                .map(|h| h.splitn(2, ':').next())
-                .flatten()
-                .map(|h| inner_targets.get(h))
-                .flatten();
-
-            if let None = target_addr {
-                return Ok(Response::builder()
-                    .status(StatusCode::NOT_FOUND)
-                    .body(BoxBody::default())
-                    .unwrap());
-            }
-
-            let target_addr = target_addr.unwrap();
-
-            let target_stream = TcpStream::connect(*target_addr)
-                .await
-                .map_err(|e| e.to_string())?;
-            let target_io = TokioIo::new(target_stream);
-
-            let (mut sender, conn) = hyper::client::conn::http1::handshake(target_io)
-                .await
-                .map_err(|e| e.to_string())?;
-
-            tokio::task::spawn(async move {
-                if let Err(err) = conn.await {
-                    println!("Connection failed: {:?}", err);
-                }
-            });
-
-            req.headers_mut()
-                .insert("X-Forwarded-For", peer_addr.to_string().parse().unwrap());
-            req.headers_mut()
-                .insert("X-Forwarded-Proto", "https".parse().unwrap());
-
-            sender
-                .send_request(req)
-                .await
-                .map(|resp| {
-                    let (parts, body) = resp.into_parts();
-                    return Response::from_parts(parts, body.boxed());
-                })
-                .map_err(|e| e.to_string())
-        }
+        proxy(req, peer_addr, inner_targets)
     });
 
     tokio::task::spawn(async move {
         if let Err(err) = http1::Builder::new()
             .serve_connection(client_io, service)
+            .with_upgrades()
             .await
         {
             println!("Failed to serve connection: {:?}", err);
@@ -177,4 +135,105 @@ async fn process(
     });
 
     Ok(())
+}
+
+async fn proxy(
+    req: Request<Incoming>,
+    peer_addr: SocketAddr,
+    targets: Arc<HashMap<String, SocketAddr>>,
+) -> Result<Response<BoxBody<Bytes, Error>>, String> {
+    let (parts, body) = req.into_parts();
+    let mut req_from_client = Request::from_parts(parts, body.boxed());
+
+    let target_addr = req_from_client
+        .headers()
+        .get(header::HOST)
+        .and_then(|h| h.to_str().ok())
+        .map(|h| h.splitn(2, ':').next())
+        .flatten()
+        .map(|h| targets.get(h))
+        .flatten();
+
+    if let None = target_addr {
+        return Ok::<Response<BoxBody<Bytes, Error>>, String>(
+            Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(BoxBody::default())
+                .unwrap(),
+        );
+    }
+
+    let target_addr = target_addr.unwrap();
+
+    let target_stream = TcpStream::connect(*target_addr)
+        .await
+        .map_err(|e| e.to_string())?;
+    let target_io = TokioIo::new(target_stream);
+
+    let (mut target_sender, conn) = hyper::client::conn::http1::handshake(target_io)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    tokio::task::spawn(async move {
+        if let Err(err) = conn.with_upgrades().await {
+            println!("Connection failed: {:?}", err);
+        }
+    });
+
+    req_from_client
+        .headers_mut()
+        .insert("X-Forwarded-For", peer_addr.to_string().parse().unwrap());
+    req_from_client
+        .headers_mut()
+        .insert("X-Forwarded-Proto", "https".parse().unwrap());
+
+    if let Some(conn_value) = req_from_client.headers().get(header::CONNECTION) {
+        if conn_value != "Upgrade" && conn_value != "upgrade" {
+            return send_request(&mut target_sender, req_from_client).await;
+        }
+    }
+
+    let client_on_upgrade = upgrade::on(&mut req_from_client);
+    let mut res_from_target = send_request(&mut target_sender, req_from_client).await?;
+    let target_on_upgrade = upgrade::on(&mut res_from_target);
+
+    proxy_upgraded(client_on_upgrade, target_on_upgrade);
+
+    Ok(res_from_target)
+}
+
+fn proxy_upgraded(client_on_upgrade: OnUpgrade, target_on_upgrade: OnUpgrade) {
+    tokio::spawn(async move {
+        let (client_result, target_result) = tokio::join!(client_on_upgrade, target_on_upgrade);
+
+        if let Err(e) = &client_result {
+            println!("Failed to upgrade client connection: {:?}", e);
+        }
+        if let Err(e) = &target_result {
+            println!("Failed to upgrade target connection: {:?}", e);
+        }
+
+        if let (Ok(client_upgraded), Ok(target_upgraded)) = (client_result, target_result) {
+            let (mut target_read, mut target_write) = split(TokioIo::new(target_upgraded));
+            let (mut client_read, mut client_write) = split(TokioIo::new(client_upgraded));
+            let _ = select! {
+                res = io::copy(&mut client_read, &mut target_write) => res,
+                res = io::copy(&mut target_read, &mut client_write) => res,
+            };
+        }
+    });
+}
+
+async fn send_request(
+    sender: &mut SendRequest<BoxBody<Bytes, Error>>,
+    request: Request<BoxBody<Bytes, Error>>,
+) -> Result<Response<BoxBody<Bytes, Error>>, String> {
+    sender
+        .send_request(request)
+        .await
+        .map(|resp| {
+            let (parts, body) = resp.into_parts();
+            return Response::from_parts(parts, body.boxed());
+        })
+        .map_err(|e| e.to_string())
 }
