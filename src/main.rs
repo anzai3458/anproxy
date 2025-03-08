@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use argh::FromArgs;
 use http_body_util::combinators::BoxBody;
 use http_body_util::BodyExt;
-use hyper::body::{Body, Bytes, Incoming};
+use hyper::body::{Bytes, Incoming};
 use hyper::client::conn::http1::SendRequest;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
