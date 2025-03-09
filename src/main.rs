@@ -15,6 +15,7 @@ use hyper_util::rt::TokioIo;
 use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use std::error::Error as StdError;
+use std::fmt::format;
 use std::sync::Arc;
 use tokio::io::split;
 use tokio::net::{TcpListener, TcpStream};
@@ -179,10 +180,9 @@ async fn proxy(
             println!("Connection failed: {:?}", err);
         }
     });
-
     req_from_client
         .headers_mut()
-        .insert("X-Forwarded-For", peer_addr.to_string().parse().unwrap());
+        .insert("X-Forwarded-For", format!("{}:{}", target_addr.ip(), target_addr.port()).parse().unwrap());
     req_from_client
         .headers_mut()
         .insert("X-Forwarded-Proto", "https".parse().unwrap());
