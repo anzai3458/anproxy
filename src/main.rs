@@ -181,9 +181,7 @@ async fn proxy(
     });
     req_from_client.headers_mut().insert(
         "X-Forwarded-For",
-        format!("{}:{}", peer_addr.ip(), peer_addr.port())
-            .parse()
-            .unwrap(),
+        peer_addr.ip().to_string().parse().unwrap(),
     );
     req_from_client
         .headers_mut()
