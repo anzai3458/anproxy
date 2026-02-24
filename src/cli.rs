@@ -1,0 +1,30 @@
+use std::path::PathBuf;
+
+use argh::FromArgs;
+
+use crate::config::Target;
+use crate::config::parse::parse_host_mapping;
+
+/// Simple https reverse proxy
+#[derive(FromArgs)]
+pub struct Options {
+    /// bind addr
+    #[argh(positional)]
+    pub addr: Option<String>,
+
+    /// host address mapping
+    #[argh(option, short = 't', from_str_fn(parse_host_mapping))]
+    pub targets: Vec<Target>,
+
+    /// cert file
+    #[argh(option, short = 'c')]
+    pub cert: Option<PathBuf>,
+
+    /// key file
+    #[argh(option, short = 'k')]
+    pub key: Option<PathBuf>,
+
+    /// TOML config file
+    #[argh(option, long = "config-file")]
+    pub config_file: Option<PathBuf>,
+}
