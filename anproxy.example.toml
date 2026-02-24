@@ -1,0 +1,20 @@
+# anproxy.example.toml — copy to anproxy.toml and adjust as needed.
+# Run with: anproxy --config-file anproxy.toml
+
+# Address and port to listen on.
+addr = "0.0.0.0:8443"
+
+# TLS certificate and private key (PEM format).
+cert = "/etc/anproxy/cert.pem"
+key  = "/etc/anproxy/key.pem"
+
+# Route incoming requests to backends based on the Host header.
+# Add one [[targets]] block per virtual host.
+
+[[targets]]
+host    = "example.com"
+address = "127.0.0.1:8080"
+
+[[targets]]
+host    = "api.example.com"
+address = "127.0.0.1:9090"
