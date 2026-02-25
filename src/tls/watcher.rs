@@ -28,13 +28,13 @@ pub fn try_reload_if_changed(
     match load_certified_key(cert_path, key_path) {
         Ok(new_key) => {
             *certified_key.write().unwrap() = Arc::new(new_key);
-            eprintln!("TLS certificate reloaded successfully");
+            tracing::info!(cert = %cert_path.display(), "TLS certificate reloaded");
             *last_cert_mtime = cert_mtime;
             *last_key_mtime = key_mtime;
             true
         }
         Err(e) => {
-            eprintln!("Failed to reload TLS certificate (keeping current): {}", e);
+            tracing::warn!(cert = %cert_path.display(), "TLS certificate reload failed (keeping current): {}", e);
             false
         }
     }

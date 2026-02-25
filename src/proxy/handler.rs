@@ -21,14 +21,23 @@ pub async fn proxy(
     let (parts, body) = req.into_parts();
     let mut req_from_client = Request::from_parts(parts, body.boxed());
 
-    let target_addr = req_from_client
+    let host = req_from_client
         .headers()
         .get(header::HOST)
         .and_then(|h| h.to_str().ok())
-        .and_then(|h| h.split(':').next())
-        .and_then(|h| targets.get(h));
+        .unwrap_or("-")
+        .to_owned();
+    let method = req_from_client.method().clone();
+    let path = req_from_client.uri().path().to_owned();
+
+    let target_addr = host
+        .split(':')
+        .next()
+        .and_then(|h| targets.get(h))
+        .copied();
 
     if target_addr.is_none() {
+        tracing::warn!(peer = %peer_addr, %host, "no target configured for host");
         return Ok::<Response<BoxBody<Bytes, Error>>, String>(
             Response::builder()
                 .status(StatusCode::NOT_FOUND)
@@ -39,7 +48,7 @@ pub async fn proxy(
 
     let target_addr = target_addr.unwrap();
 
-    let target_stream = TcpStream::connect(*target_addr)
+    let target_stream = TcpStream::connect(target_addr)
         .await
         .map_err(|e| e.to_string())?;
     let target_io = TokioIo::new(target_stream);
@@ -50,7 +59,7 @@ pub async fn proxy(
 
     tokio::task::spawn(async move {
         if let Err(err) = conn.with_upgrades().await {
-            println!("Connection failed: {:?}", err);
+            tracing::debug!("Upstream connection closed: {:?}", err);
         }
     });
     req_from_client.headers_mut().insert(
@@ -63,7 +72,12 @@ pub async fn proxy(
 
     if let Some(conn_value) = req_from_client.headers().get(header::CONNECTION) {
         if conn_value != "Upgrade" && conn_value != "upgrade" {
-            return send_request(&mut target_sender, req_from_client).await;
+            let resp = send_request(&mut target_sender, req_from_client).await?;
+            tracing::info!(
+                peer = %peer_addr, %host, %method, %path,
+                status = resp.status().as_u16(),
+            );
+            return Ok(resp);
         }
     }
 
@@ -73,6 +87,11 @@ pub async fn proxy(
 
     proxy_upgraded(client_on_upgrade, target_on_upgrade);
 
+    tracing::info!(
+        peer = %peer_addr, %host, %method, %path,
+        status = res_from_target.status().as_u16(),
+        "upgrade",
+    );
     Ok(res_from_target)
 }
 
@@ -81,10 +100,10 @@ fn proxy_upgraded(client_on_upgrade: OnUpgrade, target_on_upgrade: OnUpgrade) {
         let (client_result, target_result) = tokio::join!(client_on_upgrade, target_on_upgrade);
 
         if let Err(e) = &client_result {
-            println!("Failed to upgrade client connection: {:?}", e);
+            tracing::warn!("Failed to upgrade client connection: {:?}", e);
         }
         if let Err(e) = &target_result {
-            println!("Failed to upgrade target connection: {:?}", e);
+            tracing::warn!("Failed to upgrade target connection: {:?}", e);
         }
 
         if let (Ok(client_upgraded), Ok(target_upgraded)) = (client_result, target_result) {

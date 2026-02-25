@@ -18,6 +18,8 @@ use tls::watcher::watch_certs;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn StdError + Send + Sync + 'static>> {
+    tracing_subscriber::fmt::init();
+
     let options: Options = argh::from_env();
     let resolved = merge(options)?;
 
@@ -39,6 +41,7 @@ async fn main() -> Result<(), Box<dyn StdError + Send + Sync + 'static>> {
     let acceptor = TlsAcceptor::from(Arc::new(config));
 
     let listener = TcpListener::bind(&addr).await?;
+    tracing::info!("Listening on {}", addr);
 
     tokio::spawn(watch_certs(resolved.cert, resolved.key, certified_key));
 
@@ -50,7 +53,7 @@ async fn main() -> Result<(), Box<dyn StdError + Send + Sync + 'static>> {
 
         tokio::spawn(async move {
             if let Err(err) = fut.await {
-                eprintln!("Error handling proxy: {:?}", err);
+                tracing::error!(peer = %peer_addr, "TLS accept failed: {}", err);
             }
         });
     }

@@ -30,7 +30,7 @@ pub async fn process(
             .with_upgrades()
             .await
         {
-            println!("Failed to serve connection: {:?}", err);
+            tracing::debug!(peer = %peer_addr, "Connection closed: {:?}", err);
         }
     });
 

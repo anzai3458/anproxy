@@ -13,6 +13,8 @@ http-body-util = "0.1"
 hyper-util = { version = "0.1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 toml = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
 rcgen = "0.14"
