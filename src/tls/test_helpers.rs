@@ -7,7 +7,7 @@ pub fn write_test_cert_files() -> (PathBuf, PathBuf, NamedTempFile, NamedTempFil
     let rcgen_cert =
         rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
     let cert_pem = rcgen_cert.cert.pem();
-    let key_pem = rcgen_cert.key_pair.serialize_pem();
+    let key_pem = rcgen_cert.signing_key.serialize_pem();
 
     let mut cert_file = NamedTempFile::new().unwrap();
     cert_file.write_all(cert_pem.as_bytes()).unwrap();
