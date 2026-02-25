@@ -15,6 +15,7 @@ pub struct Config {
     pub cert: Option<String>,
     pub key: Option<String>,
     pub targets: Vec<ConfigTarget>,
+    pub log_level: Option<String>,
 }
 
 #[derive(Debug)]
@@ -23,4 +24,5 @@ pub struct ResolvedConfig {
     pub targets: HashMap<String, SocketAddr>,
     pub cert: PathBuf,
     pub key: PathBuf,
+    pub log_level: String,
 }

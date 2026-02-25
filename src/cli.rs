@@ -27,4 +27,8 @@ pub struct Options {
     /// TOML config file
     #[argh(option, long = "config-file")]
     pub config_file: Option<PathBuf>,
+
+    /// log level: error, warn, info, debug, trace (default: info)
+    #[argh(option, short = 'l', long = "log-level")]
+    pub log_level: Option<String>,
 }

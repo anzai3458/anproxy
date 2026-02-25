@@ -18,10 +18,12 @@ use tls::watcher::watch_certs;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn StdError + Send + Sync + 'static>> {
-    tracing_subscriber::fmt::init();
-
     let options: Options = argh::from_env();
     let resolved = merge(options)?;
+
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(&resolved.log_level));
+    tracing_subscriber::fmt().with_env_filter(filter).init();
 
     let addr = resolved.addr;
     let targets: Arc<HashMap<String, std::net::SocketAddr>> = Arc::new(resolved.targets);

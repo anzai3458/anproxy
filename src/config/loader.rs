@@ -59,11 +59,18 @@ pub fn merge(opts: Options) -> Result<ResolvedConfig, Box<dyn StdError + Send + 
     };
 
     let targets = raw_targets.into_iter().map(|t| (t.host, t.address)).collect();
+
+    let log_level = opts
+        .log_level
+        .or(file_cfg.log_level)
+        .unwrap_or_else(|| "info".to_string());
+
     Ok(ResolvedConfig {
         addr,
         targets,
         cert,
         key,
+        log_level,
     })
 }
 
@@ -94,6 +101,7 @@ mod tests {
             cert: cert.map(PathBuf::from),
             key: key.map(PathBuf::from),
             config_file,
+            log_level: None,
         }
     }
 
