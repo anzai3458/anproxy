@@ -23,7 +23,7 @@ cargo build --release
 ### CLI
 
 ```
-anproxy [addr] [-t <host@ip:port>...] [-c <cert>] [-k <key>] [--config-file <file>]
+anproxy [addr] [-t <host@ip:port>...] [-c <cert>] [-k <key>] [--config-file <file>] [-l <level>]
 ```
 
 **Arguments:**
@@ -35,6 +35,7 @@ anproxy [addr] [-t <host@ip:port>...] [-c <cert>] [-k <key>] [--config-file <fil
 | `-c`, `--cert` | PEM certificate file |
 | `-k`, `--key` | PEM private key file |
 | `--config-file` | TOML config file (CLI flags take precedence) |
+| `-l`, `--log-level` | Log level: `error`, `warn`, `info`, `debug`, `trace` (default: `info`) |
 
 **Example:**
 
@@ -51,9 +52,10 @@ anproxy 0.0.0.0:8443 \
 Copy `anproxy.example.toml` and adjust as needed:
 
 ```toml
-addr = "0.0.0.0:8443"
-cert = "/etc/anproxy/cert.pem"
-key  = "/etc/anproxy/key.pem"
+addr      = "0.0.0.0:8443"
+cert      = "/etc/anproxy/cert.pem"
+key       = "/etc/anproxy/key.pem"
+log_level = "info"
 
 [[targets]]
 host    = "example.com"
@@ -69,6 +71,8 @@ anproxy --config-file anproxy.toml
 ```
 
 CLI flags override any values set in the config file.
+
+The `RUST_LOG` environment variable overrides the log level from all sources, and supports fine-grained directives (e.g. `RUST_LOG=anproxy=debug`).
 
 ## Development
 
