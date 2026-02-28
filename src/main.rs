@@ -25,8 +25,17 @@ async fn main() -> Result<(), Box<dyn StdError + Send + Sync + 'static>> {
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(&resolved.log_level));
     tracing_subscriber::fmt().with_env_filter(filter).init();
 
+    tracing::info!(
+        cert = %resolved.cert.display(),
+        key = %resolved.key.display(),
+    );
+    for (host, dir) in &resolved.static_dirs {
+        tracing::info!(static_dir = true, %host, dir = %dir.display());
+    }
+
     let addr = resolved.addr;
     let targets: Arc<HashMap<String, std::net::SocketAddr>> = Arc::new(resolved.targets);
+    let static_dirs = Arc::new(resolved.static_dirs);
 
     let certified_key = Arc::new(RwLock::new(Arc::new(load_certified_key(
         &resolved.cert,
@@ -51,7 +60,13 @@ async fn main() -> Result<(), Box<dyn StdError + Send + Sync + 'static>> {
         let (stream, peer_addr) = listener.accept().await?;
         let acceptor = acceptor.clone();
 
-        let fut = process(stream, peer_addr, acceptor, targets.clone());
+        let fut = process(
+            stream,
+            peer_addr,
+            acceptor,
+            targets.clone(),
+            static_dirs.clone(),
+        );
 
         tokio::spawn(async move {
             if let Err(err) = fut.await {

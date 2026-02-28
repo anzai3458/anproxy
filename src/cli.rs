@@ -2,8 +2,8 @@ use std::path::PathBuf;
 
 use argh::FromArgs;
 
-use crate::config::Target;
-use crate::config::parse::parse_host_mapping;
+use crate::config::parse::{parse_host_mapping, parse_static_mapping};
+use crate::config::{StaticDir, Target};
 
 /// Simple https reverse proxy
 #[derive(FromArgs)]
@@ -15,6 +15,10 @@ pub struct Options {
     /// host address mapping
     #[argh(option, short = 't', from_str_fn(parse_host_mapping))]
     pub targets: Vec<Target>,
+
+    /// static file dir mapping (host@path)
+    #[argh(option, short = 's', long = "static", from_str_fn(parse_static_mapping))]
+    pub static_dirs: Vec<StaticDir>,
 
     /// cert file
     #[argh(option, short = 'c')]

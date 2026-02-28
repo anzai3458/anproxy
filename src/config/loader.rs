@@ -1,11 +1,19 @@
 use std::error::Error as StdError;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::cli::Options;
 use crate::config::parse::parse_socket_addr;
 use crate::config::types::{Config, ResolvedConfig};
-use crate::config::Target;
+use crate::config::{StaticDir, Target};
+
+fn resolve_path(raw: PathBuf, base: &Path) -> PathBuf {
+    if raw.is_absolute() {
+        raw
+    } else {
+        base.join(raw)
+    }
+}
 
 pub fn load_config_file(path: &PathBuf) -> Result<Config, Box<dyn StdError + Send + Sync>> {
     let contents = fs::read_to_string(path)
@@ -15,10 +23,19 @@ pub fn load_config_file(path: &PathBuf) -> Result<Config, Box<dyn StdError + Sen
 }
 
 pub fn merge(opts: Options) -> Result<ResolvedConfig, Box<dyn StdError + Send + Sync>> {
+    let cli_base = std::env::current_dir()?;
+
     let file_cfg = match &opts.config_file {
         Some(p) => load_config_file(p)?,
         None => Config::default(),
     };
+
+    let cfg_base: PathBuf = opts
+        .config_file
+        .as_ref()
+        .and_then(|p| p.parent())
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| cli_base.clone());
 
     let addr_str = opts
         .addr
@@ -29,12 +46,22 @@ pub fn merge(opts: Options) -> Result<ResolvedConfig, Box<dyn StdError + Send + 
 
     let cert = opts
         .cert
-        .or_else(|| file_cfg.cert.map(PathBuf::from))
+        .map(|p| resolve_path(p, &cli_base))
+        .or_else(|| {
+            file_cfg
+                .cert
+                .map(|s| resolve_path(PathBuf::from(s), &cfg_base))
+        })
         .ok_or("cert is required (-c or config file 'cert')")?;
 
     let key = opts
         .key
-        .or_else(|| file_cfg.key.map(PathBuf::from))
+        .map(|p| resolve_path(p, &cli_base))
+        .or_else(|| {
+            file_cfg
+                .key
+                .map(|s| resolve_path(PathBuf::from(s), &cfg_base))
+        })
         .ok_or("key is required (-k or config file 'key')")?;
 
     let raw_targets: Vec<Target> = if !opts.targets.is_empty() {
@@ -60,6 +87,30 @@ pub fn merge(opts: Options) -> Result<ResolvedConfig, Box<dyn StdError + Send + 
 
     let targets = raw_targets.into_iter().map(|t| (t.host, t.address)).collect();
 
+    let raw_static_dirs: Vec<StaticDir> = if !opts.static_dirs.is_empty() {
+        opts.static_dirs
+            .into_iter()
+            .map(|s| StaticDir {
+                host: s.host,
+                dir: resolve_path(s.dir, &cli_base),
+            })
+            .collect()
+    } else {
+        file_cfg
+            .static_dirs
+            .into_iter()
+            .map(|cs| StaticDir {
+                host: cs.host,
+                dir: resolve_path(PathBuf::from(cs.dir), &cfg_base),
+            })
+            .collect()
+    };
+
+    let static_dirs = raw_static_dirs
+        .into_iter()
+        .map(|s| (s.host, s.dir))
+        .collect();
+
     let log_level = opts
         .log_level
         .or(file_cfg.log_level)
@@ -71,6 +122,7 @@ pub fn merge(opts: Options) -> Result<ResolvedConfig, Box<dyn StdError + Send + 
         cert,
         key,
         log_level,
+        static_dirs,
     })
 }
 
@@ -98,6 +150,7 @@ mod tests {
         Options {
             addr: addr.map(str::to_string),
             targets,
+            static_dirs: vec![],
             cert: cert.map(PathBuf::from),
             key: key.map(PathBuf::from),
             config_file,
@@ -345,5 +398,56 @@ address = "not-a-valid-addr"
         let opts = make_opts(None, vec![], None, None, Some(f.path().to_path_buf()));
         let err = merge(opts).unwrap_err();
         assert!(err.to_string().contains("bad.example.com"));
+    }
+
+    #[test]
+    fn test_merge_static_dirs_from_config_file() {
+        let toml = r#"
+addr = "0.0.0.0:9000"
+cert = "/cfg/cert.pem"
+key  = "/cfg/key.pem"
+
+[[static_dirs]]
+host = "static.example.com"
+dir  = "/var/www/html"
+"#;
+        let f = write_toml_config(toml);
+        let opts = make_opts(None, vec![], None, None, Some(f.path().to_path_buf()));
+        let r = merge(opts).unwrap();
+        assert_eq!(r.static_dirs.len(), 1);
+        assert_eq!(
+            r.static_dirs.get("static.example.com"),
+            Some(&PathBuf::from("/var/www/html"))
+        );
+    }
+
+    #[test]
+    fn test_merge_cli_static_dirs_replace_config() {
+        let toml = r#"
+addr = "0.0.0.0:9000"
+cert = "/cfg/cert.pem"
+key  = "/cfg/key.pem"
+
+[[static_dirs]]
+host = "cfg.example.com"
+dir  = "/var/www/cfg"
+"#;
+        let f = write_toml_config(toml);
+        let opts = Options {
+            addr: None,
+            targets: vec![],
+            static_dirs: vec![crate::config::StaticDir {
+                host: "cli.example.com".to_string(),
+                dir: PathBuf::from("/var/www/cli"),
+            }],
+            cert: None,
+            key: None,
+            config_file: Some(f.path().to_path_buf()),
+            log_level: None,
+        };
+        let r = merge(opts).unwrap();
+        assert_eq!(r.static_dirs.len(), 1);
+        assert!(r.static_dirs.contains_key("cli.example.com"));
+        assert!(!r.static_dirs.contains_key("cfg.example.com"));
     }
 }

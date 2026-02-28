@@ -1,6 +1,7 @@
 use std::net::{SocketAddr, ToSocketAddrs};
+use std::path::PathBuf;
 
-use crate::config::Target;
+use crate::config::{StaticDir, Target};
 
 pub fn parse_socket_addr(addr: &str) -> Result<SocketAddr, String> {
     addr.to_socket_addrs()
@@ -23,6 +24,19 @@ pub fn parse_host_mapping(value: &str) -> Result<Target, String> {
     }
     Err(format!(
         "Invalid target format, expected '{{host}}@{{addr}}', got '{}'",
+        value
+    ))
+}
+
+pub fn parse_static_mapping(value: &str) -> Result<StaticDir, String> {
+    if let Some((host, dir)) = value.split_once("@") {
+        return Ok(StaticDir {
+            host: host.to_string(),
+            dir: PathBuf::from(dir),
+        });
+    }
+    Err(format!(
+        "Invalid static dir format, expected '{{host}}@{{path}}', got '{}'",
         value
     ))
 }
@@ -79,5 +93,28 @@ mod tests {
         let result = parse_host_mapping("@127.0.0.1:8080");
         assert!(result.is_ok());
         assert_eq!(result.unwrap().host, "");
+    }
+
+    #[test]
+    fn test_parse_static_mapping_valid_relative() {
+        let result = parse_static_mapping("static.example.com@./www/html");
+        assert!(result.is_ok());
+        let s = result.unwrap();
+        assert_eq!(s.host, "static.example.com");
+        assert_eq!(s.dir, PathBuf::from("./www/html"));
+    }
+
+    #[test]
+    fn test_parse_static_mapping_valid_absolute() {
+        let result = parse_static_mapping("example.com@/var/www/html");
+        assert!(result.is_ok());
+        let s = result.unwrap();
+        assert_eq!(s.host, "example.com");
+        assert_eq!(s.dir, PathBuf::from("/var/www/html"));
+    }
+
+    #[test]
+    fn test_parse_static_mapping_no_at_separator() {
+        assert!(parse_static_mapping("example.com:/var/www").is_err());
     }
 }

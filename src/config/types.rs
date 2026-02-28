@@ -8,6 +8,12 @@ pub struct ConfigTarget {
     pub address: String,
 }
 
+#[derive(Debug, serde::Deserialize)]
+pub struct ConfigStaticDir {
+    pub host: String,
+    pub dir: String,
+}
+
 #[derive(Debug, Default, serde::Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -15,6 +21,7 @@ pub struct Config {
     pub cert: Option<String>,
     pub key: Option<String>,
     pub targets: Vec<ConfigTarget>,
+    pub static_dirs: Vec<ConfigStaticDir>,
     pub log_level: Option<String>,
 }
 
@@ -25,4 +32,5 @@ pub struct ResolvedConfig {
     pub cert: PathBuf,
     pub key: PathBuf,
     pub log_level: String,
+    pub static_dirs: HashMap<String, PathBuf>,
 }

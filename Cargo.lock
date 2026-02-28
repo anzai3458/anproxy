@@ -17,6 +17,7 @@ version = "0.1.0"
 dependencies = [
  "argh",
  "http-body-util",
+ "httpdate",
  "hyper",
  "hyper-util",
  "rcgen",

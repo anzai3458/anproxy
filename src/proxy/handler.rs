@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use http_body_util::combinators::BoxBody;
@@ -13,28 +14,42 @@ use tokio::io::split;
 use tokio::net::TcpStream;
 use tokio::{io, select};
 
+use crate::proxy::static_handler::serve_static;
+
 pub async fn proxy(
     req: Request<Incoming>,
     peer_addr: SocketAddr,
     targets: Arc<HashMap<String, SocketAddr>>,
+    static_dirs: Arc<HashMap<String, PathBuf>>,
 ) -> Result<Response<BoxBody<Bytes, Error>>, String> {
-    let (parts, body) = req.into_parts();
-    let mut req_from_client = Request::from_parts(parts, body.boxed());
-
-    let host = req_from_client
+    let host = req
         .headers()
         .get(header::HOST)
         .and_then(|h| h.to_str().ok())
         .unwrap_or("-")
         .to_owned();
-    let method = req_from_client.method().clone();
-    let path = req_from_client.uri().path().to_owned();
+    let method = req.method().clone();
+    let path = req.uri().path().to_owned();
 
-    let target_addr = host
-        .split(':')
-        .next()
-        .and_then(|h| targets.get(h))
-        .copied();
+    // Strip optional port from the Host header for map lookups.
+    let hostname = host.split(':').next().unwrap_or(&host).to_owned();
+
+    // Try static file serving before proxy.
+    if let Some(static_dir) = static_dirs.get(&hostname) {
+        if let Some(resp) = serve_static(&req, static_dir).await {
+            tracing::info!(
+                peer = %peer_addr, %host, %method, %path,
+                status = resp.status().as_u16(),
+                "static",
+            );
+            return Ok(resp);
+        }
+    }
+
+    let (parts, body) = req.into_parts();
+    let mut req_from_client = Request::from_parts(parts, body.boxed());
+
+    let target_addr = targets.get(&hostname).copied();
 
     if target_addr.is_none() {
         tracing::warn!(peer = %peer_addr, %host, "no target configured for host");

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use hyper::server::conn::http1;
@@ -15,13 +16,15 @@ pub async fn process(
     peer_addr: SocketAddr,
     acceptor: TlsAcceptor,
     targets: Arc<HashMap<String, SocketAddr>>,
+    static_dirs: Arc<HashMap<String, PathBuf>>,
 ) -> Result<(), String> {
     let client_stream = acceptor.accept(stream).await.map_err(|e| e.to_string())?;
     let client_io = TokioIo::new(client_stream);
 
     let service = service_fn(move |req| {
         let inner_targets = targets.clone();
-        proxy(req, peer_addr, inner_targets)
+        let inner_static_dirs = static_dirs.clone();
+        proxy(req, peer_addr, inner_targets, inner_static_dirs)
     });
 
     tokio::task::spawn(async move {
