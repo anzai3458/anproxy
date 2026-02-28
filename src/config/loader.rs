@@ -15,6 +15,20 @@ fn resolve_path(raw: PathBuf, base: &Path) -> PathBuf {
     }
 }
 
+fn into_unique_map<V>(
+    entries: Vec<(String, V)>,
+    kind: &str,
+) -> Result<std::collections::HashMap<String, V>, String> {
+    let mut map = std::collections::HashMap::with_capacity(entries.len());
+    for (host, val) in entries {
+        if map.contains_key(&host) {
+            return Err(format!("duplicate {kind} entry for host '{host}'"));
+        }
+        map.insert(host, val);
+    }
+    Ok(map)
+}
+
 pub fn load_config_file(path: &PathBuf) -> Result<Config, Box<dyn StdError + Send + Sync>> {
     let contents = fs::read_to_string(path)
         .map_err(|e| format!("Cannot read config file {}: {}", path.display(), e))?;
@@ -85,7 +99,10 @@ pub fn merge(opts: Options) -> Result<ResolvedConfig, Box<dyn StdError + Send + 
             .collect::<Result<Vec<_>, String>>()?
     };
 
-    let targets = raw_targets.into_iter().map(|t| (t.host, t.address)).collect();
+    let targets = into_unique_map(
+        raw_targets.into_iter().map(|t| (t.host, t.address)).collect(),
+        "target",
+    )?;
 
     let raw_static_dirs: Vec<StaticDir> = if !opts.static_dirs.is_empty() {
         opts.static_dirs
@@ -106,10 +123,10 @@ pub fn merge(opts: Options) -> Result<ResolvedConfig, Box<dyn StdError + Send + 
             .collect()
     };
 
-    let static_dirs = raw_static_dirs
-        .into_iter()
-        .map(|s| (s.host, s.dir))
-        .collect();
+    let static_dirs = into_unique_map(
+        raw_static_dirs.into_iter().map(|s| (s.host, s.dir)).collect(),
+        "static_dir",
+    )?;
 
     let log_level = opts
         .log_level
@@ -449,5 +466,68 @@ dir  = "/var/www/cfg"
         assert_eq!(r.static_dirs.len(), 1);
         assert!(r.static_dirs.contains_key("cli.example.com"));
         assert!(!r.static_dirs.contains_key("cfg.example.com"));
+    }
+
+    #[test]
+    fn test_merge_duplicate_target_in_config_errors() {
+        let toml = r#"
+addr = "0.0.0.0:9000"
+cert = "/cfg/cert.pem"
+key  = "/cfg/key.pem"
+
+[[targets]]
+host    = "example.com"
+address = "127.0.0.1:8080"
+
+[[targets]]
+host    = "example.com"
+address = "127.0.0.1:9090"
+"#;
+        let f = write_toml_config(toml);
+        let opts = make_opts(None, vec![], None, None, Some(f.path().to_path_buf()));
+        let err = merge(opts).unwrap_err();
+        assert!(err.to_string().contains("duplicate"));
+        assert!(err.to_string().contains("example.com"));
+    }
+
+    #[test]
+    fn test_merge_duplicate_static_dir_in_config_errors() {
+        let toml = r#"
+addr = "0.0.0.0:9000"
+cert = "/cfg/cert.pem"
+key  = "/cfg/key.pem"
+
+[[static_dirs]]
+host = "static.example.com"
+dir  = "/var/www/a"
+
+[[static_dirs]]
+host = "static.example.com"
+dir  = "/var/www/b"
+"#;
+        let f = write_toml_config(toml);
+        let opts = make_opts(None, vec![], None, None, Some(f.path().to_path_buf()));
+        let err = merge(opts).unwrap_err();
+        assert!(err.to_string().contains("duplicate"));
+        assert!(err.to_string().contains("static.example.com"));
+    }
+
+    #[test]
+    fn test_merge_duplicate_target_via_cli_errors() {
+        let opts = Options {
+            addr: Some("127.0.0.1:8443".to_string()),
+            targets: vec![
+                parse_host_mapping("example.com@127.0.0.1:8080").unwrap(),
+                parse_host_mapping("example.com@127.0.0.1:9090").unwrap(),
+            ],
+            static_dirs: vec![],
+            cert: Some(PathBuf::from("/tmp/cert.pem")),
+            key: Some(PathBuf::from("/tmp/key.pem")),
+            config_file: None,
+            log_level: None,
+        };
+        let err = merge(opts).unwrap_err();
+        assert!(err.to_string().contains("duplicate"));
+        assert!(err.to_string().contains("example.com"));
     }
 }
