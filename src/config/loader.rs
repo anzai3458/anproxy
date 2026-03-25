@@ -38,6 +38,7 @@ pub fn load_config_file(path: &PathBuf) -> Result<Config, Box<dyn StdError + Sen
 
 pub fn merge(opts: Options) -> Result<ResolvedConfig, Box<dyn StdError + Send + Sync>> {
     let cli_base = std::env::current_dir()?;
+    let config_file_path = opts.config_file.as_ref().map(|p| resolve_path(p.clone(), &cli_base));
 
     let file_cfg = match &opts.config_file {
         Some(p) => load_config_file(p)?,
@@ -133,6 +134,18 @@ pub fn merge(opts: Options) -> Result<ResolvedConfig, Box<dyn StdError + Send + 
         .or(file_cfg.log_level)
         .unwrap_or_else(|| "info".to_string());
 
+    let admin_addr_str = opts.admin_addr.or(file_cfg.admin_addr);
+    let admin_addr = admin_addr_str
+        .map(|s| parse_socket_addr(&s).map_err(|e| format!("Invalid admin_addr '{}': {}", s, e)))
+        .transpose()?;
+
+    let admin_user = opts.admin_user.or(file_cfg.admin_user);
+    let admin_pass = opts.admin_pass.or(file_cfg.admin_pass);
+
+    if admin_addr.is_some() && (admin_user.is_none() || admin_pass.is_none()) {
+        return Err("admin_user and admin_pass are required when admin_addr is set".into());
+    }
+
     Ok(ResolvedConfig {
         addr,
         targets,
@@ -140,6 +153,10 @@ pub fn merge(opts: Options) -> Result<ResolvedConfig, Box<dyn StdError + Send + 
         key,
         log_level,
         static_dirs,
+        admin_addr,
+        admin_user,
+        admin_pass,
+        config_file: config_file_path,
     })
 }
 
@@ -172,6 +189,9 @@ mod tests {
             key: key.map(PathBuf::from),
             config_file,
             log_level: None,
+            admin_addr: None,
+            admin_user: None,
+            admin_pass: None,
         }
     }
 
@@ -461,6 +481,9 @@ dir  = "/var/www/cfg"
             key: None,
             config_file: Some(f.path().to_path_buf()),
             log_level: None,
+            admin_addr: None,
+            admin_user: None,
+            admin_pass: None,
         };
         let r = merge(opts).unwrap();
         assert_eq!(r.static_dirs.len(), 1);
@@ -525,9 +548,75 @@ dir  = "/var/www/b"
             key: Some(PathBuf::from("/tmp/key.pem")),
             config_file: None,
             log_level: None,
+            admin_addr: None,
+            admin_user: None,
+            admin_pass: None,
         };
         let err = merge(opts).unwrap_err();
         assert!(err.to_string().contains("duplicate"));
         assert!(err.to_string().contains("example.com"));
+    }
+
+    #[test]
+    fn test_merge_admin_fields_from_config() {
+        let toml = r#"
+addr = "0.0.0.0:9000"
+cert = "/cfg/cert.pem"
+key  = "/cfg/key.pem"
+admin_addr = "127.0.0.1:9090"
+admin_user = "admin"
+admin_pass = "secret"
+"#;
+        let f = write_toml_config(toml);
+        let opts = make_opts(None, vec![], None, None, Some(f.path().to_path_buf()));
+        let r = merge(opts).unwrap();
+        assert_eq!(r.admin_addr.unwrap().to_string(), "127.0.0.1:9090");
+        assert_eq!(r.admin_user.as_deref(), Some("admin"));
+        assert_eq!(r.admin_pass.as_deref(), Some("secret"));
+    }
+
+    #[test]
+    fn test_merge_admin_addr_without_creds_errors() {
+        let toml = r#"
+addr = "0.0.0.0:9000"
+cert = "/cfg/cert.pem"
+key  = "/cfg/key.pem"
+admin_addr = "127.0.0.1:9090"
+"#;
+        let f = write_toml_config(toml);
+        let opts = make_opts(None, vec![], None, None, Some(f.path().to_path_buf()));
+        let err = merge(opts).unwrap_err();
+        assert!(err.to_string().contains("admin_user"));
+    }
+
+    #[test]
+    fn test_merge_no_admin_fields_ok() {
+        let toml = r#"
+addr = "0.0.0.0:9000"
+cert = "/cfg/cert.pem"
+key  = "/cfg/key.pem"
+"#;
+        let f = write_toml_config(toml);
+        let opts = make_opts(None, vec![], None, None, Some(f.path().to_path_buf()));
+        let r = merge(opts).unwrap();
+        assert!(r.admin_addr.is_none());
+    }
+
+    #[test]
+    fn test_existing_config_without_admin_fields_still_parses() {
+        let toml = r#"
+addr = "0.0.0.0:9000"
+cert = "/cfg/cert.pem"
+key  = "/cfg/key.pem"
+
+[[targets]]
+host    = "example.com"
+address = "127.0.0.1:8080"
+"#;
+        let f = write_toml_config(toml);
+        let cfg = load_config_file(&f.path().to_path_buf()).unwrap();
+        assert!(cfg.admin_addr.is_none());
+        assert!(cfg.admin_user.is_none());
+        assert!(cfg.admin_pass.is_none());
     }
 }

@@ -35,4 +35,16 @@ pub struct Options {
     /// log level: error, warn, info, debug, trace (default: info)
     #[argh(option, short = 'l', long = "log-level")]
     pub log_level: Option<String>,
+
+    /// admin management bind addr
+    #[argh(option, long = "admin-addr")]
+    pub admin_addr: Option<String>,
+
+    /// admin username
+    #[argh(option, long = "admin-user")]
+    pub admin_user: Option<String>,
+
+    /// admin password
+    #[argh(option, long = "admin-pass")]
+    pub admin_pass: Option<String>,
 }

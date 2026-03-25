@@ -23,6 +23,9 @@ pub struct Config {
     pub targets: Vec<ConfigTarget>,
     pub static_dirs: Vec<ConfigStaticDir>,
     pub log_level: Option<String>,
+    pub admin_addr: Option<String>,
+    pub admin_user: Option<String>,
+    pub admin_pass: Option<String>,
 }
 
 #[derive(Debug)]
@@ -33,6 +36,10 @@ pub struct ResolvedConfig {
     pub key: PathBuf,
     pub log_level: String,
     pub static_dirs: HashMap<String, PathBuf>,
+    pub admin_addr: Option<SocketAddr>,
+    pub admin_user: Option<String>,
+    pub admin_pass: Option<String>,
+    pub config_file: Option<PathBuf>,
 }
 
 #[derive(Debug)]
