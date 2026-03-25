@@ -1,3 +1,4 @@
+pub mod assets;
 pub mod api_certs;
 pub mod api_speed_test;
 pub mod api_static_dirs;
