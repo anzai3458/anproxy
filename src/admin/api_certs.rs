@@ -28,20 +28,18 @@ pub fn get_cert_info(
     let mut expiry_str = String::from("unknown");
     let mut days_until_expiry: i64 = -1;
 
-    for pem_result in pem_iter {
-        if let Ok(pem) = pem_result {
-            if let Ok(cert) = pem.parse_x509() {
-                let not_after = cert.validity().not_after;
-                expiry_str = not_after.to_string();
+    for pem in pem_iter.flatten() {
+        if let Ok(cert) = pem.parse_x509() {
+            let not_after = cert.validity().not_after;
+            expiry_str = not_after.to_string();
 
-                let expiry_ts = not_after.timestamp();
-                let now_ts = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs() as i64;
-                days_until_expiry = (expiry_ts - now_ts) / 86400;
-                break; // Use first cert in chain
-            }
+            let expiry_ts = not_after.timestamp();
+            let now_ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64;
+            days_until_expiry = (expiry_ts - now_ts) / 86400;
+            break; // Use first cert in chain
         }
     }
 

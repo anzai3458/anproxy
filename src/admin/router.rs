@@ -42,6 +42,7 @@ fn get_session_token(req: &Request<Incoming>) -> Option<String> {
         .map(|s| s.to_string())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn route(
     req: Request<Incoming>,
     session_store: Arc<SessionStore>,
@@ -82,10 +83,8 @@ pub async fn route(
     }
 
     // All other /api/* routes require auth
-    if path.starts_with("/api/") {
-        if !check_auth(&req, &session_store) {
-            return Ok(json_err(StatusCode::UNAUTHORIZED, "Unauthorized"));
-        }
+    if path.starts_with("/api/") && !check_auth(&req, &session_store) {
+        return Ok(json_err(StatusCode::UNAUTHORIZED, "Unauthorized"));
     }
 
     let session_token = get_session_token(&req);
@@ -113,12 +112,12 @@ pub async fn route(
             let body = req.collect().await.map_err(|e| e.to_string())?.to_bytes();
             Ok(api_targets::add_target(body, &config, config_path.as_ref()).await)
         }
-        (Method::PUT, ref p) if p.starts_with("/api/targets/") => {
+        (Method::PUT, p) if p.starts_with("/api/targets/") => {
             let host = extract_path_param(p, "/api/targets/").unwrap_or("");
             let body = req.collect().await.map_err(|e| e.to_string())?.to_bytes();
             Ok(api_targets::update_target(host, body, &config, config_path.as_ref()).await)
         }
-        (Method::DELETE, ref p) if p.starts_with("/api/targets/") => {
+        (Method::DELETE, p) if p.starts_with("/api/targets/") => {
             let host = extract_path_param(p, "/api/targets/").unwrap_or("");
             Ok(api_targets::delete_target(host, &config, config_path.as_ref()).await)
         }
@@ -129,12 +128,12 @@ pub async fn route(
             let body = req.collect().await.map_err(|e| e.to_string())?.to_bytes();
             Ok(api_static_dirs::add_static_dir(body, &config, config_path.as_ref()).await)
         }
-        (Method::PUT, ref p) if p.starts_with("/api/static-dirs/") => {
+        (Method::PUT, p) if p.starts_with("/api/static-dirs/") => {
             let host = extract_path_param(p, "/api/static-dirs/").unwrap_or("");
             let body = req.collect().await.map_err(|e| e.to_string())?.to_bytes();
             Ok(api_static_dirs::update_static_dir(host, body, &config, config_path.as_ref()).await)
         }
-        (Method::DELETE, ref p) if p.starts_with("/api/static-dirs/") => {
+        (Method::DELETE, p) if p.starts_with("/api/static-dirs/") => {
             let host = extract_path_param(p, "/api/static-dirs/").unwrap_or("");
             Ok(api_static_dirs::delete_static_dir(host, &config, config_path.as_ref()).await)
         }

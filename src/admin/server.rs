@@ -16,6 +16,7 @@ use crate::admin::router::route;
 use crate::config::types::SharedConfig;
 use crate::stats::Stats;
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run_admin_server(
     addr: SocketAddr,
     acceptor: TlsAcceptor,
