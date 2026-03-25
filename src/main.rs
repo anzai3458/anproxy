@@ -59,7 +59,26 @@ async fn main() -> Result<(), Box<dyn StdError + Send + Sync + 'static>> {
     let listener = TcpListener::bind(&addr).await?;
     tracing::info!("Listening on {}", addr);
 
-    tokio::spawn(watch_certs(resolved.cert, resolved.key, certified_key));
+    let cert_path = resolved.cert.clone();
+    let key_path = resolved.key.clone();
+    tokio::spawn(watch_certs(resolved.cert, resolved.key, Arc::clone(&certified_key)));
+
+    if let Some(admin_addr) = resolved.admin_addr {
+        let admin_user = resolved.admin_user.unwrap();
+        let admin_pass = resolved.admin_pass.unwrap();
+        tokio::spawn(admin::server::run_admin_server(
+            admin_addr,
+            acceptor.clone(),
+            shared_config.clone(),
+            stats.clone(),
+            admin_user,
+            admin_pass,
+            resolved.config_file,
+            Arc::clone(&certified_key),
+            cert_path,
+            key_path,
+        ));
+    }
 
     loop {
         let (stream, peer_addr) = listener.accept().await?;

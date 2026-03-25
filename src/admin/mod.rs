@@ -8,3 +8,4 @@ pub mod auth;
 pub mod persist;
 pub mod response;
 pub mod router;
+pub mod server;
