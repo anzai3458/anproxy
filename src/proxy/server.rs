@@ -1,6 +1,4 @@
-use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use hyper::server::conn::http1;
@@ -9,24 +7,28 @@ use hyper_util::rt::TokioIo;
 use tokio::net::TcpStream;
 use tokio_rustls::TlsAcceptor;
 
+use crate::config::types::SharedConfig;
 use crate::proxy::handler::proxy;
+use crate::stats::Stats;
 
 pub async fn process(
     stream: TcpStream,
     peer_addr: SocketAddr,
     acceptor: TlsAcceptor,
-    targets: Arc<HashMap<String, SocketAddr>>,
-    static_dirs: Arc<HashMap<String, PathBuf>>,
+    config: SharedConfig,
+    stats: Arc<Stats>,
 ) -> Result<(), String> {
     let client_stream = acceptor.accept(stream).await.map_err(|e| e.to_string())?;
     let client_io = TokioIo::new(client_stream);
 
-    let service = service_fn(move |req| {
-        let inner_targets = targets.clone();
-        let inner_static_dirs = static_dirs.clone();
-        proxy(req, peer_addr, inner_targets, inner_static_dirs)
-    });
+    stats.inc_connections();
+    let stats_clone = Arc::clone(&stats);
 
+    let service = service_fn(move |req| {
+        let inner_config = config.clone();
+        let inner_stats = stats.clone();
+        proxy(req, peer_addr, inner_config, inner_stats)
+    });
     tokio::task::spawn(async move {
         if let Err(err) = http1::Builder::new()
             .serve_connection(client_io, service)
@@ -35,6 +37,7 @@ pub async fn process(
         {
             tracing::debug!(peer = %peer_addr, "Connection closed: {:?}", err);
         }
+        stats_clone.dec_connections();
     });
 
     Ok(())

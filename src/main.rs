@@ -4,7 +4,6 @@ mod proxy;
 mod tls;
 mod stats;
 
-use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::sync::{Arc, RwLock};
 
@@ -13,6 +12,7 @@ use tokio_rustls::{rustls, TlsAcceptor};
 
 use cli::Options;
 use config::loader::merge;
+use config::types::RuntimeConfig;
 use proxy::server::process;
 use tls::cert::{load_certified_key, DynamicCertResolver};
 use tls::watcher::watch_certs;
@@ -35,8 +35,11 @@ async fn main() -> Result<(), Box<dyn StdError + Send + Sync + 'static>> {
     }
 
     let addr = resolved.addr;
-    let targets: Arc<HashMap<String, std::net::SocketAddr>> = Arc::new(resolved.targets);
-    let static_dirs = Arc::new(resolved.static_dirs);
+    let shared_config = Arc::new(RwLock::new(RuntimeConfig {
+        targets: resolved.targets,
+        static_dirs: resolved.static_dirs,
+    }));
+    let stats = Arc::new(stats::Stats::new());
 
     let certified_key = Arc::new(RwLock::new(Arc::new(load_certified_key(
         &resolved.cert,
@@ -65,8 +68,8 @@ async fn main() -> Result<(), Box<dyn StdError + Send + Sync + 'static>> {
             stream,
             peer_addr,
             acceptor,
-            targets.clone(),
-            static_dirs.clone(),
+            shared_config.clone(),
+            stats.clone(),
         );
 
         tokio::spawn(async move {
