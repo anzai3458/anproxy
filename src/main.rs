@@ -2,6 +2,7 @@ mod cli;
 mod config;
 mod proxy;
 mod tls;
+mod stats;
 
 use std::collections::HashMap;
 use std::error::Error as StdError;
