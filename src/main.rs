@@ -1,4 +1,5 @@
 mod cli;
+mod admin;
 mod config;
 mod proxy;
 mod tls;
