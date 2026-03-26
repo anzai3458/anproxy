@@ -11,6 +11,7 @@ A lightweight HTTPS reverse proxy that terminates TLS and routes requests to HTT
 - WebSocket and HTTP upgrade support
 - Hot-reloading of TLS certificates without restart
 - Configuration via CLI flags or TOML file
+- **Management web UI** — live routing config, monitoring, cert management, and speed testing
 
 ## Installation
 
@@ -24,7 +25,7 @@ cargo build --release
 ### CLI
 
 ```
-anproxy [addr] [-t <host@ip:port>...] [-s <host@path>...] [-c <cert>] [-k <key>] [--config-file <file>] [-l <level>]
+anproxy [addr] [-t <host@ip:port>...] [-s <host@path>...] [-c <cert>] [-k <key>] [--config-file <file>] [-l <level>] [--admin-addr <addr>] [--admin-user <user>] [--admin-pass <pass>]
 ```
 
 **Arguments:**
@@ -38,6 +39,9 @@ anproxy [addr] [-t <host@ip:port>...] [-s <host@path>...] [-c <cert>] [-k <key>]
 | `-k`, `--key` | PEM private key file |
 | `--config-file` | TOML config file (CLI flags take precedence) |
 | `-l`, `--log-level` | Log level: `error`, `warn`, `info`, `debug`, `trace` (default: `info`) |
+| `--admin-addr` | Management service bind address (e.g. `127.0.0.1:9090`) |
+| `--admin-user` | Management service username (required if `--admin-addr` is set) |
+| `--admin-pass` | Management service password (required if `--admin-addr` is set) |
 
 **Example:**
 
@@ -71,6 +75,11 @@ address = "127.0.0.1:9090"
 [[static_dirs]]
 host = "static.example.com"
 dir  = "/var/www/html"
+
+# Management service (optional)
+admin_addr = "127.0.0.1:9090"
+admin_user = "admin"
+admin_pass = "changeme"
 ```
 
 ```bash
@@ -100,6 +109,47 @@ This makes it straightforward to run a mixed setup — e.g. `app.example.com` se
 
 **Path traversal protection:** the resolved file path is canonicalized and checked to be within the configured directory before the file is opened.
 
+## Management service
+
+anproxy includes an optional web-based management UI. Enable it by setting `--admin-addr` (or `admin_addr` in the config file) along with credentials.
+
+```bash
+anproxy 0.0.0.0:8443 \
+  -t example.com@127.0.0.1:8080 \
+  -c cert.pem -k key.pem \
+  --admin-addr 127.0.0.1:9090 \
+  --admin-user admin \
+  --admin-pass secret
+```
+
+Open `https://127.0.0.1:9090` in a browser to access the management UI. It runs on a separate TLS port using the same certificate.
+
+**Features:**
+
+- **Dashboard** — active connections, total requests, errors, per-host stats
+- **Targets** — add, edit, and remove proxy target mappings at runtime
+- **Static dirs** — add, edit, and remove static file directory mappings at runtime
+- **Certificates** — view cert expiry, trigger hot-reload
+- **Speed test** — measure download/upload throughput and latency between browser and proxy
+
+Changes made via the management UI are persisted to the TOML config file (if one was specified) so they survive restarts.
+
+Sessions expire after 30 minutes of inactivity. The management service uses `HttpOnly; Secure; SameSite=Strict` cookies.
+
+### Building the frontend
+
+The management UI is a React SPA embedded into the binary at compile time. To rebuild it:
+
+```bash
+cd admin-ui
+npm install
+npm run build    # produces admin-ui/dist/
+cd ..
+cargo build      # embeds the dist/ into the binary
+```
+
+If `admin-ui/dist/` does not exist at compile time, the management service will serve a placeholder message.
+
 ## Development
 
 ```bash
@@ -117,3 +167,7 @@ cargo test        # Run tests
 - [argh](https://github.com/google/argh) — CLI parsing
 - [serde](https://serde.rs) + [toml](https://github.com/toml-rs/toml) — config file
 - [httpdate](https://github.com/pyfisch/httpdate) — RFC 7231 date formatting
+- [rust-embed](https://github.com/pyrossh/rust-embed) — embedded frontend assets
+- [dashmap](https://github.com/xacrimon/dashmap) — concurrent per-host stats
+- [x509-parser](https://github.com/rusticata/x509-parser) — certificate expiry parsing
+- [React](https://react.dev) + [Redux Toolkit](https://redux-toolkit.js.org) + [Tailwind CSS](https://tailwindcss.com) — management frontend

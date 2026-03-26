@@ -8,6 +8,9 @@ addr = "0.0.0.0:8443"
 cert = "/etc/anproxy/cert.pem"
 key  = "/etc/anproxy/key.pem"
 
+# Log level: error, warn, info, debug, trace (default: info).
+# log_level = "info"
+
 # Route incoming requests to backends based on the Host header.
 # Add one [[targets]] block per virtual host.
 
@@ -18,3 +21,18 @@ address = "127.0.0.1:8080"
 [[targets]]
 host    = "api.example.com"
 address = "127.0.0.1:9090"
+
+# Serve static files from a local directory instead of proxying.
+# Add one [[static_dirs]] block per virtual host.
+
+# [[static_dirs]]
+# host = "static.example.com"
+# dir  = "/var/www/html"
+
+# Management service — optional web UI for live routing config,
+# monitoring, certificate management, and network speed testing.
+# Uncomment and set credentials to enable.
+
+# admin_addr = "127.0.0.1:9090"
+# admin_user = "admin"
+# admin_pass = "changeme"
