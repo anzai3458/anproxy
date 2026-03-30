@@ -1,28 +1,64 @@
 use std::net::SocketAddr;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 
 use http_body_util::combinators::BoxBody;
 use http_body_util::BodyExt;
-use hyper::body::{Bytes, Incoming};
+use hyper::body::{Body, Bytes, Frame, Incoming};
 use hyper::client::conn::http1::SendRequest;
 use hyper::upgrade::OnUpgrade;
 use hyper::{header, upgrade, Error, Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
+use tokio::io;
 use tokio::io::split;
 use tokio::net::TcpStream;
-use tokio::io;
 
 use crate::config::types::SharedConfig;
 use crate::proxy::static_handler::serve_static;
 use crate::stats::Stats;
 
-/// Extract Content-Length from headers as u64, defaulting to 0.
-fn content_length(headers: &hyper::HeaderMap) -> u64 {
-    headers
-        .get(header::CONTENT_LENGTH)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.parse::<u64>().ok())
-        .unwrap_or(0)
+/// Body wrapper that counts bytes as each data frame passes through.
+struct CountingBody {
+    inner: BoxBody<Bytes, Error>,
+    stats: Arc<Stats>,
+    add_fn: fn(&Stats, u64),
+}
+
+impl Body for CountingBody {
+    type Data = Bytes;
+    type Error = Error;
+
+    fn poll_frame(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<Frame<Bytes>, Error>>> {
+        let this = self.get_mut();
+        match Pin::new(&mut this.inner).poll_frame(cx) {
+            Poll::Ready(Some(Ok(frame))) => {
+                if let Some(data) = frame.data_ref() {
+                    (this.add_fn)(&this.stats, data.len() as u64);
+                }
+                Poll::Ready(Some(Ok(frame)))
+            }
+            other => other,
+        }
+    }
+
+}
+
+/// Wrap a response body to count bytes sent to the client.
+fn count_sent(
+    resp: Response<BoxBody<Bytes, Error>>,
+    stats: &Arc<Stats>,
+) -> Response<BoxBody<Bytes, Error>> {
+    let (parts, body) = resp.into_parts();
+    let counting = CountingBody {
+        inner: body,
+        stats: Arc::clone(stats),
+        add_fn: Stats::add_bytes_sent,
+    };
+    Response::from_parts(parts, counting.boxed())
 }
 
 pub async fn proxy(
@@ -45,10 +81,6 @@ pub async fn proxy(
 
     stats.inc_requests(&hostname);
 
-    // Track inbound request body size.
-    let req_bytes = content_length(req.headers());
-    stats.add_bytes_received(req_bytes);
-
     let (static_dir, target_addr) = {
         let cfg = config.read().unwrap();
         (
@@ -60,19 +92,23 @@ pub async fn proxy(
     // Try static file serving before proxy.
     if let Some(ref static_dir) = static_dir {
         if let Some(resp) = serve_static(&req, static_dir).await {
-            let resp_bytes = content_length(resp.headers());
-            stats.add_bytes_sent(resp_bytes);
             tracing::info!(
                 peer = %peer_addr, %host, %method, %path,
                 status = resp.status().as_u16(),
                 "static",
             );
-            return Ok(resp);
+            return Ok(count_sent(resp, &stats));
         }
     }
 
     let (parts, body) = req.into_parts();
-    let mut req_from_client = Request::from_parts(parts, body.boxed());
+    // Wrap the request body to count bytes received from the client.
+    let counting_body = CountingBody {
+        inner: body.boxed(),
+        stats: Arc::clone(&stats),
+        add_fn: Stats::add_bytes_received,
+    };
+    let mut req_from_client = Request::from_parts(parts, counting_body.boxed());
 
     if target_addr.is_none() {
         tracing::warn!(peer = %peer_addr, %host, "no target configured for host");
@@ -111,13 +147,11 @@ pub async fn proxy(
     if let Some(conn_value) = req_from_client.headers().get(header::CONNECTION) {
         if conn_value != "Upgrade" && conn_value != "upgrade" {
             let resp = send_request(&mut target_sender, req_from_client).await?;
-            let resp_bytes = content_length(resp.headers());
-            stats.add_bytes_sent(resp_bytes);
             tracing::info!(
                 peer = %peer_addr, %host, %method, %path,
                 status = resp.status().as_u16(),
             );
-            return Ok(resp);
+            return Ok(count_sent(resp, &stats));
         }
     }
 
@@ -132,7 +166,7 @@ pub async fn proxy(
         status = res_from_target.status().as_u16(),
         "upgrade",
     );
-    Ok(res_from_target)
+    Ok(count_sent(res_from_target, &stats))
 }
 
 fn proxy_upgraded(client_on_upgrade: OnUpgrade, target_on_upgrade: OnUpgrade, stats: Arc<Stats>) {
