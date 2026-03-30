@@ -10,11 +10,20 @@ use hyper::{header, upgrade, Error, Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
 use tokio::io::split;
 use tokio::net::TcpStream;
-use tokio::{io, select};
+use tokio::io;
 
 use crate::config::types::SharedConfig;
 use crate::proxy::static_handler::serve_static;
 use crate::stats::Stats;
+
+/// Extract Content-Length from headers as u64, defaulting to 0.
+fn content_length(headers: &hyper::HeaderMap) -> u64 {
+    headers
+        .get(header::CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(0)
+}
 
 pub async fn proxy(
     req: Request<Incoming>,
@@ -36,6 +45,10 @@ pub async fn proxy(
 
     stats.inc_requests(&hostname);
 
+    // Track inbound request body size.
+    let req_bytes = content_length(req.headers());
+    stats.add_bytes_received(req_bytes);
+
     let (static_dir, target_addr) = {
         let cfg = config.read().unwrap();
         (
@@ -47,6 +60,8 @@ pub async fn proxy(
     // Try static file serving before proxy.
     if let Some(ref static_dir) = static_dir {
         if let Some(resp) = serve_static(&req, static_dir).await {
+            let resp_bytes = content_length(resp.headers());
+            stats.add_bytes_sent(resp_bytes);
             tracing::info!(
                 peer = %peer_addr, %host, %method, %path,
                 status = resp.status().as_u16(),
@@ -96,6 +111,8 @@ pub async fn proxy(
     if let Some(conn_value) = req_from_client.headers().get(header::CONNECTION) {
         if conn_value != "Upgrade" && conn_value != "upgrade" {
             let resp = send_request(&mut target_sender, req_from_client).await?;
+            let resp_bytes = content_length(resp.headers());
+            stats.add_bytes_sent(resp_bytes);
             tracing::info!(
                 peer = %peer_addr, %host, %method, %path,
                 status = resp.status().as_u16(),
@@ -108,7 +125,7 @@ pub async fn proxy(
     let mut res_from_target = send_request(&mut target_sender, req_from_client).await?;
     let target_on_upgrade = upgrade::on(&mut res_from_target);
 
-    proxy_upgraded(client_on_upgrade, target_on_upgrade);
+    proxy_upgraded(client_on_upgrade, target_on_upgrade, Arc::clone(&stats));
 
     tracing::info!(
         peer = %peer_addr, %host, %method, %path,
@@ -118,7 +135,7 @@ pub async fn proxy(
     Ok(res_from_target)
 }
 
-fn proxy_upgraded(client_on_upgrade: OnUpgrade, target_on_upgrade: OnUpgrade) {
+fn proxy_upgraded(client_on_upgrade: OnUpgrade, target_on_upgrade: OnUpgrade, stats: Arc<Stats>) {
     tokio::spawn(async move {
         let (client_result, target_result) = tokio::join!(client_on_upgrade, target_on_upgrade);
 
@@ -132,10 +149,16 @@ fn proxy_upgraded(client_on_upgrade: OnUpgrade, target_on_upgrade: OnUpgrade) {
         if let (Ok(client_upgraded), Ok(target_upgraded)) = (client_result, target_result) {
             let (mut target_read, mut target_write) = split(TokioIo::new(target_upgraded));
             let (mut client_read, mut client_write) = split(TokioIo::new(client_upgraded));
-            let _ = select! {
-                res = io::copy(&mut client_read, &mut target_write) => res,
-                res = io::copy(&mut target_read, &mut client_write) => res,
-            };
+            let (client_to_target, target_to_client) = tokio::join!(
+                io::copy(&mut client_read, &mut target_write),
+                io::copy(&mut target_read, &mut client_write),
+            );
+            if let Ok(n) = client_to_target {
+                stats.add_bytes_received(n);
+            }
+            if let Ok(n) = target_to_client {
+                stats.add_bytes_sent(n);
+            }
         }
     });
 }

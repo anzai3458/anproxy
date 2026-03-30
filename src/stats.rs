@@ -41,6 +41,14 @@ impl Stats {
     pub fn dec_connections(&self) {
         self.active_connections.fetch_sub(1, Ordering::Relaxed);
     }
+
+    pub fn add_bytes_sent(&self, n: u64) {
+        self.bytes_sent.fetch_add(n, Ordering::Relaxed);
+    }
+
+    pub fn add_bytes_received(&self, n: u64) {
+        self.bytes_received.fetch_add(n, Ordering::Relaxed);
+    }
 }
 
 #[cfg(test)]
