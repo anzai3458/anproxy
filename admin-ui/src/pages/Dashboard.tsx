@@ -1,49 +1,147 @@
-import { useEffect } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import type { AppDispatch, RootState } from '../store';
-import { fetchStats } from '../store/statsSlice';
-import { fetchTargets } from '../store/targetsSlice';
-import { fetchStaticDirs } from '../store/staticDirsSlice';
-import StatsCard from '../components/StatsCard';
-import DataTable from '../components/DataTable';
+import { useState, useEffect, useCallback } from 'react'
+import { api, type Stats, type Target, type StaticDir, type CertInfo } from '../api.ts'
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1073741824) return `${(bytes / 1048576).toFixed(1)} MB`
+  return `${(bytes / 1073741824).toFixed(2)} GB`
+}
+
+function StatCard({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
+  return (
+    <div className="bg-surface border border-border rounded-lg p-4">
+      <div className="text-[10px] text-text-dim uppercase tracking-widest mb-2">{label}</div>
+      <div className={`text-2xl font-bold ${color || 'text-text'}`}>{value}</div>
+      {sub && <div className="text-[10px] text-text-muted mt-1">{sub}</div>}
+    </div>
+  )
+}
 
 export default function Dashboard() {
-  const dispatch = useDispatch<AppDispatch>();
-  const stats = useSelector((s: RootState) => s.stats.data);
-  const targets = useSelector((s: RootState) => s.targets.items);
-  const staticDirs = useSelector((s: RootState) => s.staticDirs.items);
+  const [stats, setStats] = useState<Stats | null>(null)
+  const [targets, setTargets] = useState<Target[]>([])
+  const [staticDirs, setStaticDirs] = useState<StaticDir[]>([])
+  const [certs, setCerts] = useState<CertInfo | null>(null)
+
+  const fetchAll = useCallback(async () => {
+    const [s, t, sd, c] = await Promise.allSettled([
+      api.getStats(),
+      api.getTargets(),
+      api.getStaticDirs(),
+      api.getCerts(),
+    ])
+    if (s.status === 'fulfilled') setStats(s.value)
+    if (t.status === 'fulfilled') setTargets(t.value)
+    if (sd.status === 'fulfilled') setStaticDirs(sd.value)
+    if (c.status === 'fulfilled') setCerts(c.value)
+  }, [])
 
   useEffect(() => {
-    dispatch(fetchStats());
-    dispatch(fetchTargets());
-    dispatch(fetchStaticDirs());
-    const id = setInterval(() => dispatch(fetchStats()), 5000);
-    return () => clearInterval(id);
-  }, [dispatch]);
+    fetchAll()
+    const id = setInterval(async () => {
+      try {
+        const s = await api.getStats()
+        setStats(s)
+      } catch { /* ignore */ }
+    }, 5000)
+    return () => clearInterval(id)
+  }, [fetchAll])
 
-  const expiryColor = stats
-    ? stats.cert_expiry_days > 30 ? 'text-green-400' : stats.cert_expiry_days > 7 ? 'text-yellow-400' : 'text-red-400'
-    : undefined;
+  const certColor = certs
+    ? certs.days_until_expiry > 30 ? 'text-green' : certs.days_until_expiry > 7 ? 'text-yellow' : 'text-red'
+    : undefined
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold text-white mb-6">Dashboard</h1>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <StatsCard label="Active Connections" value={stats?.active_connections ?? '-'} />
-        <StatsCard label="Total Requests" value={stats?.total_requests ?? '-'} />
-        <StatsCard label="Errors" value={stats?.errors ?? '-'} color={stats && stats.errors > 0 ? 'text-red-400' : undefined} />
-        <StatsCard label="Cert Expiry (days)" value={stats?.cert_expiry_days ?? '-'} color={expiryColor} />
+    <div className="space-y-6 animate-fade-in">
+      <h1 className="text-sm font-semibold text-text-dim">
+        <span className="text-accent">~</span> overview
+      </h1>
+
+      {/* Stats grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard label="connections" value={stats?.active_connections?.toString() ?? '—'} color="text-blue" />
+        <StatCard label="requests" value={stats?.total_requests?.toLocaleString() ?? '—'} />
+        <StatCard
+          label="errors"
+          value={stats?.total_errors?.toLocaleString() ?? '—'}
+          color={stats && stats.total_errors > 0 ? 'text-red' : undefined}
+        />
+        <StatCard
+          label="cert expiry"
+          value={certs ? `${certs.days_until_expiry}d` : '—'}
+          color={certColor}
+          sub={certs?.expiry}
+        />
       </div>
-      <div className="grid lg:grid-cols-2 gap-6">
-        <div className="bg-gray-800 rounded-xl p-4">
-          <h2 className="text-white font-bold mb-3">Proxy Targets</h2>
-          <DataTable headers={['Host', 'Address']} rows={targets.map((t) => [t.host, t.address])} />
+
+      {/* Bandwidth */}
+      {stats && (
+        <div className="grid grid-cols-2 gap-3">
+          <StatCard label="sent" value={formatBytes(stats.bytes_sent)} color="text-green" />
+          <StatCard label="received" value={formatBytes(stats.bytes_received)} color="text-accent" />
         </div>
-        <div className="bg-gray-800 rounded-xl p-4">
-          <h2 className="text-white font-bold mb-3">Static Dirs</h2>
-          <DataTable headers={['Host', 'Directory']} rows={staticDirs.map((s) => [s.host, s.dir])} />
+      )}
+
+      {/* Per-host traffic */}
+      {stats && Object.keys(stats.per_host_requests).length > 0 && (
+        <div>
+          <h2 className="text-xs text-text-dim mb-3">
+            <span className="text-accent">$</span> requests by host
+          </h2>
+          <div className="bg-surface border border-border rounded-lg overflow-hidden">
+            {Object.entries(stats.per_host_requests)
+              .sort(([, a], [, b]) => b - a)
+              .map(([host, count]) => (
+                <div key={host} className="flex items-center justify-between px-4 py-2.5 border-b border-border last:border-b-0 text-xs">
+                  <span className="text-text truncate">{host}</span>
+                  <span className="text-text-dim ml-3 shrink-0">{count.toLocaleString()}</span>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+
+      {/* Quick view: targets + static dirs */}
+      <div className="grid md:grid-cols-2 gap-6">
+        <div>
+          <h2 className="text-xs text-text-dim mb-3">
+            <span className="text-accent">$</span> proxy targets
+            <span className="text-text-muted ml-2">{targets.length}</span>
+          </h2>
+          {targets.length === 0 ? (
+            <p className="text-xs text-text-muted">no targets configured</p>
+          ) : (
+            <div className="bg-surface border border-border rounded-lg overflow-hidden">
+              {targets.map((t) => (
+                <div key={t.host} className="flex items-center justify-between px-4 py-2.5 border-b border-border last:border-b-0 text-xs">
+                  <span className="text-text truncate">{t.host}</span>
+                  <span className="text-text-dim ml-3 shrink-0">{t.address}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <h2 className="text-xs text-text-dim mb-3">
+            <span className="text-accent">$</span> static dirs
+            <span className="text-text-muted ml-2">{staticDirs.length}</span>
+          </h2>
+          {staticDirs.length === 0 ? (
+            <p className="text-xs text-text-muted">no static dirs configured</p>
+          ) : (
+            <div className="bg-surface border border-border rounded-lg overflow-hidden">
+              {staticDirs.map((s) => (
+                <div key={s.host} className="flex items-center justify-between px-4 py-2.5 border-b border-border last:border-b-0 text-xs">
+                  <span className="text-text truncate">{s.host}</span>
+                  <span className="text-text-dim ml-3 shrink-0 truncate max-w-40">{s.dir}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
-  );
+  )
 }

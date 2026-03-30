@@ -1,45 +1,127 @@
-import { useDispatch, useSelector } from 'react-redux';
-import type { AppDispatch, RootState } from '../store';
-import { runSpeedTest } from '../store/speedTestSlice';
-import StatsCard from '../components/StatsCard';
+import { useState } from 'react'
+import { api } from '../api.ts'
+
+type Phase = 'idle' | 'ping' | 'download' | 'upload' | 'done'
 
 export default function SpeedTest() {
-  const dispatch = useDispatch<AppDispatch>();
-  const { phase, latency, downloadMbps, uploadMbps, error } = useSelector((s: RootState) => s.speedTest);
+  const [phase, setPhase] = useState<Phase>('idle')
+  const [latency, setLatency] = useState<number | null>(null)
+  const [download, setDownload] = useState<number | null>(null)
+  const [upload, setUpload] = useState<number | null>(null)
+  const [error, setError] = useState('')
 
-  const running = phase !== 'idle' && phase !== 'done';
+  const run = async () => {
+    setError('')
+    setLatency(null)
+    setDownload(null)
+    setUpload(null)
+
+    try {
+      // Ping
+      setPhase('ping')
+      const pings: number[] = []
+      for (let i = 0; i < 3; i++) {
+        const t0 = performance.now()
+        await api.speedTestPing()
+        pings.push(performance.now() - t0)
+      }
+      setLatency(Math.round(Math.min(...pings)))
+
+      // Download
+      setPhase('download')
+      const dlStart = performance.now()
+      const dlRes = await api.speedTestDownload()
+      const dlBlob = await dlRes.blob()
+      const dlElapsed = (performance.now() - dlStart) / 1000
+      const dlMbps = (dlBlob.size * 8) / (dlElapsed * 1_000_000)
+      setDownload(Math.round(dlMbps * 100) / 100)
+
+      // Upload
+      setPhase('upload')
+      const payload = new Blob([new Uint8Array(10 * 1024 * 1024)])
+      const ulRes = await api.speedTestUpload(payload)
+      const ulData = await ulRes.json()
+      if (ulData.ok) {
+        setUpload(Math.round(ulData.data.mbps * 100) / 100)
+      }
+
+      setPhase('done')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Test failed')
+      setPhase('idle')
+    }
+  }
+
+  const running = phase !== 'idle' && phase !== 'done'
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold text-white mb-6">Speed Test</h1>
-      <button
-        onClick={() => dispatch(runSpeedTest())}
-        disabled={running}
-        className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed mb-6 font-medium"
-      >
-        {running ? 'Running...' : 'Run Test'}
-      </button>
+    <div className="space-y-6 animate-fade-in">
+      <div className="flex items-center justify-between">
+        <h1 className="text-sm font-semibold text-text-dim">
+          <span className="text-accent">~</span> speed test
+        </h1>
+        <button
+          onClick={run}
+          disabled={running}
+          className="text-xs bg-accent hover:bg-accent-hover disabled:opacity-50 text-bg font-semibold rounded px-3 py-1.5 transition-colors cursor-pointer"
+        >
+          {running ? `testing ${phase}...` : 'run test'}
+        </button>
+      </div>
 
-      {running && (
-        <div className="mb-6 text-gray-400">
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-            {phase === 'ping' && 'Measuring latency...'}
-            {phase === 'download' && 'Testing download speed...'}
-            {phase === 'upload' && 'Testing upload speed...'}
-          </div>
-        </div>
+      {error && (
+        <div className="text-red text-xs bg-red/10 border border-red/20 rounded px-3 py-2">{error}</div>
       )}
 
-      {error && <div className="bg-red-900/50 text-red-300 rounded p-3 mb-4">{error}</div>}
+      <div className="grid grid-cols-3 gap-3">
+        <ResultCard label="latency" value={latency !== null ? `${latency}` : '—'} unit="ms" active={phase === 'ping'} />
+        <ResultCard label="download" value={download !== null ? `${download}` : '—'} unit="mbps" active={phase === 'download'} />
+        <ResultCard label="upload" value={upload !== null ? `${upload}` : '—'} unit="mbps" active={phase === 'upload'} />
+      </div>
 
-      {(latency != null || downloadMbps != null || uploadMbps != null) && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <StatsCard label="Latency" value={latency != null ? `${latency} ms` : '-'} />
-          <StatsCard label="Download" value={downloadMbps != null ? `${downloadMbps} Mbps` : '-'} />
-          <StatsCard label="Upload" value={uploadMbps != null ? `${uploadMbps} Mbps` : '-'} />
+      {/* Terminal-style log */}
+      {phase !== 'idle' && (
+        <div className="bg-surface border border-border rounded-lg p-4 text-xs space-y-1.5">
+          <LogLine done text="initializing speed test" />
+          <LogLine done={phase !== 'ping'} active={phase === 'ping'} text="measuring latency (3 pings)" />
+          {latency !== null && <LogLine done text={`  latency: ${latency}ms`} dim />}
+          {(phase === 'download' || phase === 'upload' || phase === 'done') && (
+            <LogLine done={phase !== 'download'} active={phase === 'download'} text="downloading 10MB test file" />
+          )}
+          {download !== null && <LogLine done text={`  download: ${download} mbps`} dim />}
+          {(phase === 'upload' || phase === 'done') && (
+            <LogLine done={phase !== 'upload'} active={phase === 'upload'} text="uploading 10MB test file" />
+          )}
+          {upload !== null && <LogLine done text={`  upload: ${upload} mbps`} dim />}
+          {phase === 'done' && <LogLine done text="test complete" accent />}
         </div>
       )}
     </div>
-  );
+  )
+}
+
+function ResultCard({ label, value, unit, active }: { label: string; value: string; unit: string; active: boolean }) {
+  return (
+    <div className={`bg-surface border rounded-lg p-4 transition-colors ${active ? 'border-accent' : 'border-border'}`}>
+      <div className="text-[10px] text-text-dim uppercase tracking-widest mb-2">{label}</div>
+      <div className="text-xl font-bold text-text">{value}</div>
+      <div className="text-[10px] text-text-muted mt-0.5">{unit}</div>
+    </div>
+  )
+}
+
+function LogLine({ done, active, text, dim, accent }: { done?: boolean; active?: boolean; text: string; dim?: boolean; accent?: boolean }) {
+  const color = accent ? 'text-accent' : dim ? 'text-text-dim' : 'text-text'
+  return (
+    <div className={`flex items-center gap-2 ${color}`}>
+      {active ? (
+        <span className="text-accent blink">{'>'}</span>
+      ) : done ? (
+        <span className="text-green">{'>'}</span>
+      ) : (
+        <span className="text-text-muted">{'>'}</span>
+      )}
+      <span>{text}</span>
+    </div>
+  )
 }

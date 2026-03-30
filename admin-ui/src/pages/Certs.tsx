@@ -1,53 +1,92 @@
-import { useEffect } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import type { AppDispatch, RootState } from '../store';
-import { fetchCerts, reloadCerts } from '../store/certsSlice';
+import { useState, useEffect } from 'react'
+import { api, type CertInfo } from '../api.ts'
 
 export default function Certs() {
-  const dispatch = useDispatch<AppDispatch>();
-  const { data, loading } = useSelector((s: RootState) => s.certs);
+  const [certs, setCerts] = useState<CertInfo | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [reloading, setReloading] = useState(false)
+  const [reloadMsg, setReloadMsg] = useState('')
 
-  useEffect(() => { dispatch(fetchCerts()); }, [dispatch]);
+  const fetchCerts = async () => {
+    try {
+      setCerts(await api.getCerts())
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load')
+    } finally {
+      setLoading(false)
+    }
+  }
 
-  const expiryColor = data
-    ? data.days_until_expiry > 30 ? 'text-green-400' : data.days_until_expiry > 7 ? 'text-yellow-400' : 'text-red-400'
-    : 'text-white';
+  useEffect(() => { fetchCerts() }, [])
+
+  const handleReload = async () => {
+    setReloading(true)
+    setReloadMsg('')
+    try {
+      await api.reloadCerts()
+      setReloadMsg('certificates reloaded')
+      await fetchCerts()
+      setTimeout(() => setReloadMsg(''), 3000)
+    } catch (e) {
+      setReloadMsg(e instanceof Error ? e.message : 'Reload failed')
+    } finally {
+      setReloading(false)
+    }
+  }
+
+  const expiryColor = certs
+    ? certs.days_until_expiry > 30 ? 'text-green' : certs.days_until_expiry > 7 ? 'text-yellow' : 'text-red'
+    : 'text-text'
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-white">Certificates</h1>
+    <div className="space-y-4 animate-fade-in">
+      <div className="flex items-center justify-between">
+        <h1 className="text-sm font-semibold text-text-dim">
+          <span className="text-accent">~</span> certificates
+        </h1>
         <button
-          onClick={() => dispatch(reloadCerts())}
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-500"
+          onClick={handleReload}
+          disabled={reloading}
+          className="text-xs bg-accent hover:bg-accent-hover disabled:opacity-50 text-bg font-semibold rounded px-3 py-1.5 transition-colors cursor-pointer"
         >
-          Reload Certificates
+          {reloading ? 'reloading...' : 'reload'}
         </button>
       </div>
+
+      {reloadMsg && (
+        <div className={`text-xs rounded px-3 py-2 ${
+          reloadMsg.includes('reloaded')
+            ? 'text-green bg-green/10 border border-green/20'
+            : 'text-red bg-red/10 border border-red/20'
+        }`}>
+          {reloadMsg}
+        </div>
+      )}
+
+      {error && <div className="text-red text-xs">{error}</div>}
+
       {loading ? (
-        <div className="text-gray-400">Loading...</div>
-      ) : data ? (
-        <div className="bg-gray-800 rounded-xl p-6 space-y-4">
-          <div>
-            <span className="text-gray-400 text-sm">Certificate Path</span>
-            <p className="text-white font-mono">{data.cert_path}</p>
-          </div>
-          <div>
-            <span className="text-gray-400 text-sm">Key Path</span>
-            <p className="text-white font-mono">{data.key_path}</p>
-          </div>
-          <div>
-            <span className="text-gray-400 text-sm">Expiry Date</span>
-            <p className="text-white">{data.expiry}</p>
-          </div>
-          <div>
-            <span className="text-gray-400 text-sm">Days Until Expiry</span>
-            <p className={`text-2xl font-bold ${expiryColor}`}>{data.days_until_expiry}</p>
-          </div>
+        <p className="text-xs text-text-dim">loading...</p>
+      ) : certs ? (
+        <div className="bg-surface border border-border rounded-lg overflow-hidden">
+          <Row label="cert path" value={certs.cert_path} />
+          <Row label="key path" value={certs.key_path} />
+          <Row label="expiry" value={certs.expiry} />
+          <Row label="days remaining" value={`${certs.days_until_expiry}`} valueClass={expiryColor} />
         </div>
       ) : (
-        <div className="text-gray-500">No certificate data available</div>
+        <p className="text-xs text-text-muted">no certificate info available</p>
       )}
     </div>
-  );
+  )
+}
+
+function Row({ label, value, valueClass }: { label: string; value: string; valueClass?: string }) {
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center px-4 py-3 border-b border-border last:border-b-0 text-xs gap-1 sm:gap-0">
+      <span className="text-text-dim w-36 shrink-0">{label}</span>
+      <span className={`text-text break-all ${valueClass || ''}`}>{value}</span>
+    </div>
+  )
 }

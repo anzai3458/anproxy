@@ -1,56 +1,85 @@
-import { useState } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
-import type { AppDispatch, RootState } from '../store';
-import { login } from '../store/authSlice';
+import { useState, type FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { api } from '../api.ts'
+import { useAuth } from '../App.tsx'
 
 export default function Login() {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const dispatch = useDispatch<AppDispatch>();
-  const navigate = useNavigate();
-  const error = useSelector((s: RootState) => s.auth.error);
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+  const { setAuthed } = useAuth()
+  const navigate = useNavigate()
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const result = await dispatch(login({ username, password }));
-    if (login.fulfilled.match(result)) navigate('/');
-  };
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault()
+    setError('')
+    setLoading(true)
+    try {
+      await api.login(username, password)
+      setAuthed(true)
+      navigate('/', { replace: true })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Login failed')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen">
-      <div className="flex-1 bg-gradient-to-br from-blue-600 to-purple-700 flex items-center justify-center p-8">
-        <div className="text-center">
-          <h1 className="text-5xl font-bold text-white mb-2">anproxy</h1>
-          <p className="text-blue-200 text-lg">HTTPS Reverse Proxy Admin</p>
+    <div className="min-h-dvh flex items-center justify-center p-4 bg-bg">
+      <div className="w-full max-w-sm animate-fade-in">
+        <div className="mb-8">
+          <div className="text-accent font-semibold text-lg tracking-wide">
+            anproxy<span className="blink">_</span>
+          </div>
+          <p className="text-text-dim text-xs mt-2">https reverse proxy management</p>
         </div>
-      </div>
-      <div className="flex-1 bg-gray-900 flex items-center justify-center p-8">
-        <form onSubmit={handleSubmit} className="w-full max-w-sm">
-          <h2 className="text-2xl font-bold text-white mb-6">Sign In</h2>
-          {error && <div className="bg-red-900/50 text-red-300 rounded p-3 mb-4 text-sm">{error}</div>}
-          <div className="mb-4">
-            <label className="block text-gray-400 text-sm mb-1">Username</label>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-[10px] text-text-dim uppercase tracking-widest mb-1.5">
+              username
+            </label>
             <input
-              className="w-full bg-gray-800 text-white rounded px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+              type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
+              autoFocus
+              required
+              className="w-full bg-surface border border-border rounded px-3 py-2.5 text-sm text-text placeholder:text-text-muted focus:outline-none focus:border-accent transition-colors"
+              placeholder="admin"
             />
           </div>
-          <div className="mb-6">
-            <label className="block text-gray-400 text-sm mb-1">Password</label>
+          <div>
+            <label className="block text-[10px] text-text-dim uppercase tracking-widest mb-1.5">
+              password
+            </label>
             <input
               type="password"
-              className="w-full bg-gray-800 text-white rounded px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              required
+              className="w-full bg-surface border border-border rounded px-3 py-2.5 text-sm text-text placeholder:text-text-muted focus:outline-none focus:border-accent transition-colors"
+              placeholder="********"
             />
           </div>
-          <button type="submit" className="w-full bg-blue-600 text-white rounded py-2 hover:bg-blue-500 font-medium">
-            Login
+
+          {error && (
+            <div className="text-red text-xs bg-red/10 border border-red/20 rounded px-3 py-2">
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-accent hover:bg-accent-hover disabled:opacity-50 text-bg font-semibold text-sm rounded px-3 py-2.5 transition-colors cursor-pointer"
+          >
+            {loading ? 'connecting...' : 'login'}
           </button>
         </form>
       </div>
     </div>
-  );
+  )
 }

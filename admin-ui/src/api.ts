@@ -1,13 +1,49 @@
 const BASE = '/api';
 
-async function request(path: string, options?: RequestInit) {
+async function request<T = unknown>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...options,
     headers: { 'Content-Type': 'application/json', ...options?.headers },
   });
+  if (res.status === 401) {
+    window.dispatchEvent(new CustomEvent('auth:expired'));
+    throw new Error('Session expired');
+  }
   const data = await res.json();
   if (!data.ok) throw new Error(data.error || 'Unknown error');
-  return data.data;
+  return data.data as T;
+}
+
+export interface Target {
+  host: string;
+  address: string;
+}
+
+export interface StaticDir {
+  host: string;
+  dir: string;
+}
+
+export interface Stats {
+  active_connections: number;
+  total_requests: number;
+  total_errors: number;
+  bytes_sent: number;
+  bytes_received: number;
+  per_host_requests: Record<string, number>;
+}
+
+export interface CertInfo {
+  cert_path: string;
+  key_path: string;
+  expiry: string;
+  days_until_expiry: number;
+}
+
+export interface UploadResult {
+  bytes: number;
+  elapsed_ms: number;
+  mbps: number;
 }
 
 export const api = {
@@ -15,24 +51,24 @@ export const api = {
     request('/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
   logout: () => request('/logout', { method: 'POST' }),
 
-  getTargets: () => request('/targets'),
+  getTargets: () => request<Target[]>('/targets'),
   addTarget: (host: string, address: string) =>
-    request('/targets', { method: 'POST', body: JSON.stringify({ host, address }) }),
+    request<Target>('/targets', { method: 'POST', body: JSON.stringify({ host, address }) }),
   updateTarget: (host: string, address: string) =>
-    request(`/targets/${encodeURIComponent(host)}`, { method: 'PUT', body: JSON.stringify({ address }) }),
+    request<Target>(`/targets/${encodeURIComponent(host)}`, { method: 'PUT', body: JSON.stringify({ address }) }),
   deleteTarget: (host: string) =>
     request(`/targets/${encodeURIComponent(host)}`, { method: 'DELETE' }),
 
-  getStaticDirs: () => request('/static-dirs'),
+  getStaticDirs: () => request<StaticDir[]>('/static-dirs'),
   addStaticDir: (host: string, dir: string) =>
-    request('/static-dirs', { method: 'POST', body: JSON.stringify({ host, dir }) }),
+    request<StaticDir>('/static-dirs', { method: 'POST', body: JSON.stringify({ host, dir }) }),
   updateStaticDir: (host: string, dir: string) =>
-    request(`/static-dirs/${encodeURIComponent(host)}`, { method: 'PUT', body: JSON.stringify({ dir }) }),
+    request<StaticDir>(`/static-dirs/${encodeURIComponent(host)}`, { method: 'PUT', body: JSON.stringify({ dir }) }),
   deleteStaticDir: (host: string) =>
     request(`/static-dirs/${encodeURIComponent(host)}`, { method: 'DELETE' }),
 
-  getStats: () => request('/stats'),
-  getCerts: () => request('/certs'),
+  getStats: () => request<Stats>('/stats'),
+  getCerts: () => request<CertInfo>('/certs'),
   reloadCerts: () => request('/certs/reload', { method: 'POST' }),
 
   speedTestPing: () => fetch(`${BASE}/speed-test/ping`),
