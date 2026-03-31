@@ -42,3 +42,33 @@ pub async fn process(
 
     Ok(())
 }
+
+pub async fn process_plain(
+    stream: TcpStream,
+    peer_addr: SocketAddr,
+    config: SharedConfig,
+    stats: Arc<Stats>,
+) -> Result<(), String> {
+    let client_io = TokioIo::new(stream);
+
+    stats.inc_connections();
+    let stats_clone = Arc::clone(&stats);
+
+    let service = service_fn(move |req| {
+        let inner_config = config.clone();
+        let inner_stats = stats.clone();
+        proxy(req, peer_addr, inner_config, inner_stats)
+    });
+    tokio::task::spawn(async move {
+        if let Err(err) = http1::Builder::new()
+            .serve_connection(client_io, service)
+            .with_upgrades()
+            .await
+        {
+            tracing::debug!(peer = %peer_addr, "Connection closed: {:?}", err);
+        }
+        stats_clone.dec_connections();
+    });
+
+    Ok(())
+}

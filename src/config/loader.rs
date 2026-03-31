@@ -66,8 +66,7 @@ pub fn merge(opts: Options) -> Result<ResolvedConfig, Box<dyn StdError + Send + 
             file_cfg
                 .cert
                 .map(|s| resolve_path(PathBuf::from(s), &cfg_base))
-        })
-        .ok_or("cert is required (-c or config file 'cert')")?;
+        });
 
     let key = opts
         .key
@@ -76,8 +75,18 @@ pub fn merge(opts: Options) -> Result<ResolvedConfig, Box<dyn StdError + Send + 
             file_cfg
                 .key
                 .map(|s| resolve_path(PathBuf::from(s), &cfg_base))
-        })
-        .ok_or("key is required (-k or config file 'key')")?;
+        });
+
+    let no_tls = opts.no_tls || file_cfg.no_tls.unwrap_or(false);
+
+    if !no_tls {
+        if cert.is_none() {
+            return Err("cert is required (-c or config file 'cert'). Use --no-tls to disable TLS.".into());
+        }
+        if key.is_none() {
+            return Err("key is required (-k or config file 'key'). Use --no-tls to disable TLS.".into());
+        }
+    }
 
     let raw_targets: Vec<Target> = if !opts.targets.is_empty() {
         opts.targets
@@ -157,6 +166,7 @@ pub fn merge(opts: Options) -> Result<ResolvedConfig, Box<dyn StdError + Send + 
         admin_user,
         admin_pass,
         config_file: config_file_path,
+        no_tls,
     })
 }
 
@@ -192,6 +202,7 @@ mod tests {
             admin_addr: None,
             admin_user: None,
             admin_pass: None,
+            no_tls: false,
         }
     }
 
@@ -275,8 +286,8 @@ key  = "/etc/anproxy/key.pem"
         );
         let r = merge(opts).unwrap();
         assert_eq!(r.addr.to_string(), "127.0.0.1:8443");
-        assert_eq!(r.cert, PathBuf::from("/tmp/cert.pem"));
-        assert_eq!(r.key, PathBuf::from("/tmp/key.pem"));
+        assert_eq!(r.cert, Some(PathBuf::from("/tmp/cert.pem")));
+        assert_eq!(r.key, Some(PathBuf::from("/tmp/key.pem")));
         assert_eq!(r.targets.len(), 1);
         assert!(r.targets.contains_key("example.com"));
     }
@@ -296,8 +307,8 @@ address = "127.0.0.1:7070"
         let opts = make_opts(None, vec![], None, None, Some(f.path().to_path_buf()));
         let r = merge(opts).unwrap();
         assert_eq!(r.addr.to_string(), "0.0.0.0:9000");
-        assert_eq!(r.cert, PathBuf::from("/cfg/cert.pem"));
-        assert_eq!(r.key, PathBuf::from("/cfg/key.pem"));
+        assert_eq!(r.cert, Some(PathBuf::from("/cfg/cert.pem")));
+        assert_eq!(r.key, Some(PathBuf::from("/cfg/key.pem")));
         assert_eq!(r.targets.len(), 1);
         assert!(r.targets.contains_key("cfg.example.com"));
     }
@@ -337,8 +348,8 @@ key  = "/cfg/key.pem"
             Some(f.path().to_path_buf()),
         );
         let r = merge(opts).unwrap();
-        assert_eq!(r.cert, PathBuf::from("/cli/cert.pem"));
-        assert_eq!(r.key, PathBuf::from("/cli/key.pem"));
+        assert_eq!(r.cert, Some(PathBuf::from("/cli/cert.pem")));
+        assert_eq!(r.key, Some(PathBuf::from("/cli/key.pem")));
     }
 
     #[test]
@@ -456,6 +467,7 @@ dir  = "/var/www/html"
             r.static_dirs.get("static.example.com"),
             Some(&PathBuf::from("/var/www/html"))
         );
+        assert!(!r.no_tls);
     }
 
     #[test]
@@ -484,6 +496,7 @@ dir  = "/var/www/cfg"
             admin_addr: None,
             admin_user: None,
             admin_pass: None,
+            no_tls: false,
         };
         let r = merge(opts).unwrap();
         assert_eq!(r.static_dirs.len(), 1);
@@ -551,6 +564,7 @@ dir  = "/var/www/b"
             admin_addr: None,
             admin_user: None,
             admin_pass: None,
+            no_tls: false,
         };
         let err = merge(opts).unwrap_err();
         assert!(err.to_string().contains("duplicate"));
@@ -573,6 +587,7 @@ admin_pass = "secret"
         assert_eq!(r.admin_addr.unwrap().to_string(), "127.0.0.1:9090");
         assert_eq!(r.admin_user.as_deref(), Some("admin"));
         assert_eq!(r.admin_pass.as_deref(), Some("secret"));
+        assert!(!r.no_tls);
     }
 
     #[test]

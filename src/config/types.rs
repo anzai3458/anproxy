@@ -26,20 +26,22 @@ pub struct Config {
     pub admin_addr: Option<String>,
     pub admin_user: Option<String>,
     pub admin_pass: Option<String>,
+    pub no_tls: Option<bool>,
 }
 
 #[derive(Debug)]
 pub struct ResolvedConfig {
     pub addr: SocketAddr,
     pub targets: HashMap<String, SocketAddr>,
-    pub cert: PathBuf,
-    pub key: PathBuf,
+    pub cert: Option<PathBuf>,
+    pub key: Option<PathBuf>,
     pub log_level: String,
     pub static_dirs: HashMap<String, PathBuf>,
     pub admin_addr: Option<SocketAddr>,
     pub admin_user: Option<String>,
     pub admin_pass: Option<String>,
     pub config_file: Option<PathBuf>,
+    pub no_tls: bool,
 }
 
 #[derive(Debug)]

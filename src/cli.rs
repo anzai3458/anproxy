@@ -47,4 +47,8 @@ pub struct Options {
     /// admin password
     #[argh(option, long = "admin-pass")]
     pub admin_pass: Option<String>,
+
+    /// disable TLS (for local testing)
+    #[argh(switch, long = "no-tls")]
+    pub no_tls: bool,
 }
