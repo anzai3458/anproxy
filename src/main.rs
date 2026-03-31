@@ -51,8 +51,17 @@ async fn main() -> Result<(), Box<dyn StdError + Send + Sync + 'static>> {
 
     if resolved.no_tls {
         // Plain HTTP mode - no TLS
-        if resolved.admin_addr.is_some() {
-            tracing::warn!("Admin interface not available in plain HTTP mode");
+        if let Some(admin_addr) = resolved.admin_addr {
+            let admin_user = resolved.admin_user.unwrap();
+            let admin_pass = resolved.admin_pass.unwrap();
+            tokio::spawn(admin::server::run_admin_server_plain(
+                admin_addr,
+                shared_config.clone(),
+                stats.clone(),
+                admin_user,
+                admin_pass,
+                resolved.config_file,
+            ));
         }
 
         loop {

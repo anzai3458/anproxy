@@ -21,6 +21,23 @@ use crate::admin::response::json_err;
 use crate::config::types::SharedConfig;
 use crate::stats::Stats;
 
+/// TLS-specific context for admin server
+pub struct TlsContext {
+    pub cert_key: Arc<RwLock<Arc<CertifiedKey>>>,
+    pub cert_path: PathBuf,
+    pub key_path: PathBuf,
+}
+
+impl Clone for TlsContext {
+    fn clone(&self) -> Self {
+        Self {
+            cert_key: Arc::clone(&self.cert_key),
+            cert_path: self.cert_path.clone(),
+            key_path: self.key_path.clone(),
+        }
+    }
+}
+
 fn extract_path_param<'a>(path: &'a str, prefix: &str) -> Option<&'a str> {
     path.strip_prefix(prefix).filter(|s| !s.is_empty())
 }
@@ -51,9 +68,7 @@ pub async fn route(
     admin_user: String,
     admin_pass: String,
     config_path: Option<PathBuf>,
-    cert_key: Arc<RwLock<Arc<CertifiedKey>>>,
-    cert_path: PathBuf,
-    key_path: PathBuf,
+    tls_context: Option<TlsContext>,
     speed_test_limiter: Arc<SpeedTestLimiter>,
 ) -> Result<Response<BoxBody<Bytes, Error>>, String> {
     let method = req.method().clone();
@@ -140,9 +155,19 @@ pub async fn route(
 
         // Stats & Certs
         (Method::GET, "/api/stats") => Ok(api_stats::get_stats(&stats)),
-        (Method::GET, "/api/certs") => Ok(api_certs::get_cert_info(&cert_path, &key_path)),
+        (Method::GET, "/api/certs") => {
+            if let Some(ref ctx) = tls_context {
+                Ok(api_certs::get_cert_info(&ctx.cert_path, &ctx.key_path))
+            } else {
+                Ok(json_err(StatusCode::SERVICE_UNAVAILABLE, "TLS not enabled in this mode"))
+            }
+        }
         (Method::POST, "/api/certs/reload") => {
-            Ok(api_certs::reload_certs(&cert_path, &key_path, &cert_key))
+            if let Some(ref ctx) = tls_context {
+                Ok(api_certs::reload_certs(&ctx.cert_path, &ctx.key_path, &ctx.cert_key))
+            } else {
+                Ok(json_err(StatusCode::SERVICE_UNAVAILABLE, "TLS not enabled in this mode"))
+            }
         }
 
         // Speed test
