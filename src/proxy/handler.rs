@@ -45,6 +45,9 @@ impl Body for CountingBody {
         }
     }
 
+    fn size_hint(&self) -> hyper::body::SizeHint {
+        self.inner.size_hint()
+    }
 }
 
 /// Wrap a response body to count bytes sent to the client.
