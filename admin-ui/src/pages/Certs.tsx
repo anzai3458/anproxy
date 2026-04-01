@@ -69,11 +69,49 @@ export default function Certs() {
       {loading ? (
         <p className="text-xs text-text-dim">loading...</p>
       ) : certs ? (
-        <div className="bg-surface border border-border rounded-lg overflow-hidden">
-          <Row label="cert path" value={certs.cert_path} />
-          <Row label="key path" value={certs.key_path} />
-          <Row label="expiry" value={certs.expiry} />
-          <Row label="days remaining" value={`${certs.days_until_expiry}`} valueClass={expiryColor} />
+        <div className="space-y-4">
+          {/* Certificate Files */}
+          <div className="bg-surface border border-border rounded-lg overflow-hidden">
+            <div className="px-4 py-2 bg-border/30 border-b border-border">
+              <span className="text-xs font-semibold text-text-dim uppercase">Files</span>
+            </div>
+            <Row label="cert path" value={certs.cert_path} />
+            <Row label="key path" value={certs.key_path} />
+          </div>
+
+          {/* Validity Period */}
+          <div className="bg-surface border border-border rounded-lg overflow-hidden">
+            <div className="px-4 py-2 bg-border/30 border-b border-border">
+              <span className="text-xs font-semibold text-text-dim uppercase">Validity Period</span>
+            </div>
+            <Row label="valid from" value={certs.not_before} />
+            <Row label="expires on" value={certs.expiry} />
+            <Row label="days remaining" value={`${certs.days_until_expiry}`} valueClass={expiryColor} />
+          </div>
+
+          {/* Subject & Issuer */}
+          <div className="bg-surface border border-border rounded-lg overflow-hidden">
+            <div className="px-4 py-2 bg-border/30 border-b border-border">
+              <span className="text-xs font-semibold text-text-dim uppercase">Subject & Issuer</span>
+            </div>
+            <Row label="subject" value={certs.subject} />
+            <Row label="issuer (CA)" value={certs.issuer} />
+            <Row label="serial number" value={certs.serial} />
+          </div>
+
+          {/* Technical Details */}
+          <div className="bg-surface border border-border rounded-lg overflow-hidden">
+            <div className="px-4 py-2 bg-border/30 border-b border-border">
+              <span className="text-xs font-semibold text-text-dim uppercase">Technical Details</span>
+            </div>
+            <Row label="signature algorithm" value={certs.signature_algorithm} />
+            {certs.san_dns_names.length > 0 && (
+              <Row
+                label="subject alt names (DNS)"
+                value={certs.san_dns_names.join(', ')}
+              />
+            )}
+          </div>
         </div>
       ) : (
         <p className="text-xs text-text-muted">no certificate info available</p>

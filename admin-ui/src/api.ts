@@ -40,6 +40,12 @@ export interface CertInfo {
   key_path: string;
   expiry: string;
   days_until_expiry: number;
+  not_before: string;
+  subject: string;
+  issuer: string;
+  serial: string;
+  signature_algorithm: string;
+  san_dns_names: string[];
 }
 
 export interface UploadResult {
