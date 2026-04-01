@@ -8,7 +8,7 @@ use hyper::{Error, Response};
 use crate::admin::response::json_ok;
 use crate::stats::Stats;
 
-pub fn get_stats(stats: &Arc<Stats>) -> Response<BoxBody<Bytes, Error>> {
+pub fn get_stats(stats: &Arc<Stats>, proxy_port: u16) -> Response<BoxBody<Bytes, Error>> {
     let per_host: std::collections::HashMap<String, u64> = stats
         .per_host_requests
         .iter()
@@ -29,6 +29,7 @@ pub fn get_stats(stats: &Arc<Stats>) -> Response<BoxBody<Bytes, Error>> {
         "bytes_received": stats.bytes_received.load(Ordering::Relaxed),
         "per_host_requests": per_host,
         "per_host_last_request": per_host_last,
+        "proxy_port": proxy_port,
     }))
 }
 
@@ -40,7 +41,7 @@ mod tests {
     #[test]
     fn test_get_stats_empty() {
         let stats = Arc::new(Stats::new());
-        let resp = get_stats(&stats);
+        let resp = get_stats(&stats, 8443);
         assert_eq!(resp.status(), StatusCode::OK);
     }
 
@@ -50,7 +51,7 @@ mod tests {
         stats.inc_requests("example.com");
         stats.inc_requests("example.com");
         stats.inc_connections();
-        let resp = get_stats(&stats);
+        let resp = get_stats(&stats, 8443);
         assert_eq!(resp.status(), StatusCode::OK);
     }
 }

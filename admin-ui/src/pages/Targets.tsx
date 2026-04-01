@@ -1,9 +1,10 @@
 import { useState, useEffect, type FormEvent } from 'react'
-import { api, type Target } from '../api.ts'
+import { api, type Target, type Stats } from '../api.ts'
 import Modal from '../components/Modal.tsx'
 
 export default function Targets() {
   const [items, setItems] = useState<Target[]>([])
+  const [stats, setStats] = useState<Stats | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
@@ -16,7 +17,12 @@ export default function Targets() {
 
   const fetch = async () => {
     try {
-      setItems(await api.getTargets())
+      const [targets, s] = await Promise.all([
+        api.getTargets(),
+        api.getStats()
+      ])
+      setItems(targets)
+      setStats(s)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load')
     } finally {
@@ -99,7 +105,7 @@ export default function Targets() {
           </div>
           {items.map((t) => (
             <div key={t.host} className="sm:grid sm:grid-cols-[1fr_1fr_auto] px-4 py-3 border-b border-border last:border-b-0 text-xs items-center">
-              <a href={`https://${t.host}`} target="_blank" rel="noopener noreferrer" className="text-text font-medium truncate hover:text-accent transition-colors">{t.host}</a>
+              <a href={`https://${t.host}:${stats?.proxy_port ?? 443}`} target="_blank" rel="noopener noreferrer" className="text-text font-medium truncate hover:text-accent transition-colors">{t.host}</a>
               <div className="text-text-dim truncate mt-0.5 sm:mt-0">{t.address}</div>
               <div className="flex gap-3 justify-end mt-2 sm:mt-0 w-24">
                 <button onClick={() => openEdit(t)} className="text-text-dim hover:text-accent transition-colors cursor-pointer">edit</button>

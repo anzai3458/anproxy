@@ -61,6 +61,7 @@ async fn main() -> Result<(), Box<dyn StdError + Send + Sync + 'static>> {
                 admin_user,
                 admin_pass,
                 resolved.config_file,
+                addr.port(),
             ));
         }
 
@@ -120,6 +121,7 @@ async fn main() -> Result<(), Box<dyn StdError + Send + Sync + 'static>> {
                 Arc::clone(&certified_key),
                 cert_path,
                 key_path,
+                addr.port(),
             ));
         }
 

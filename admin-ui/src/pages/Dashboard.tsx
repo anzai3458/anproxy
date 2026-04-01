@@ -126,7 +126,7 @@ export default function Dashboard() {
             <div className="bg-surface border border-border rounded-lg overflow-hidden">
               {targets.map((t) => (
                 <div key={t.host} className="flex items-center justify-between px-4 py-2.5 border-b border-border last:border-b-0 text-xs">
-                  <a href={`https://${t.host}`} target="_blank" rel="noopener noreferrer" className="text-text truncate hover:text-accent transition-colors">{t.host}</a>
+                  <a href={`https://${t.host}:${stats?.proxy_port ?? 443}`} target="_blank" rel="noopener noreferrer" className="text-text truncate hover:text-accent transition-colors">{t.host}</a>
                   <span className="text-text-dim ml-3 shrink-0">{t.address}</span>
                 </div>
               ))}

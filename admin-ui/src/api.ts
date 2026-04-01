@@ -32,6 +32,7 @@ export interface Stats {
   bytes_received: number;
   per_host_requests: Record<string, number>;
   per_host_last_request: Record<string, number>;
+  proxy_port: number;
 }
 
 export interface CertInfo {

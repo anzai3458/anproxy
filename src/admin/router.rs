@@ -70,6 +70,7 @@ pub async fn route(
     config_path: Option<PathBuf>,
     tls_context: Option<TlsContext>,
     speed_test_limiter: Arc<SpeedTestLimiter>,
+    proxy_port: u16,
 ) -> Result<Response<BoxBody<Bytes, Error>>, String> {
     let method = req.method().clone();
     let path = req.uri().path().to_string();
@@ -154,7 +155,7 @@ pub async fn route(
         }
 
         // Stats & Certs
-        (Method::GET, "/api/stats") => Ok(api_stats::get_stats(&stats)),
+        (Method::GET, "/api/stats") => Ok(api_stats::get_stats(&stats, proxy_port)),
         (Method::GET, "/api/certs") => {
             if let Some(ref ctx) = tls_context {
                 Ok(api_certs::get_cert_info(&ctx.cert_path, &ctx.key_path))

@@ -24,6 +24,7 @@ pub struct AdminContext {
     pub admin_user: String,
     pub admin_pass: String,
     pub config_path: Option<PathBuf>,
+    pub proxy_port: u16,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -38,6 +39,7 @@ pub async fn run_admin_server(
     cert_key: std::sync::Arc<std::sync::RwLock<std::sync::Arc<rustls::sign::CertifiedKey>>>,
     cert_path: PathBuf,
     key_path: PathBuf,
+    proxy_port: u16,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let session_store = Arc::new(SessionStore::new(Duration::from_secs(1800)));
     let speed_test_limiter = Arc::new(api_speed_test::new_limiter());
@@ -95,6 +97,7 @@ pub async fn run_admin_server(
                 admin_pass,
                 config_path,
                 speed_test_limiter,
+                proxy_port,
             };
 
             let service = service_fn(move |req| {
@@ -111,6 +114,7 @@ pub async fn run_admin_server(
                         ctx.config_path,
                         Some(tls_context),
                         ctx.speed_test_limiter,
+                        ctx.proxy_port,
                     )
                     .await
                 }
@@ -134,6 +138,7 @@ pub async fn run_admin_server_plain(
     admin_user: String,
     admin_pass: String,
     config_path: Option<PathBuf>,
+    proxy_port: u16,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let session_store = Arc::new(SessionStore::new(Duration::from_secs(1800)));
     let speed_test_limiter = Arc::new(api_speed_test::new_limiter());
@@ -172,6 +177,7 @@ pub async fn run_admin_server_plain(
                 admin_pass,
                 config_path,
                 speed_test_limiter,
+                proxy_port,
             };
 
             let service = service_fn(move |req| {
@@ -187,6 +193,7 @@ pub async fn run_admin_server_plain(
                         ctx.config_path,
                         None::<crate::admin::router::TlsContext>,
                         ctx.speed_test_limiter,
+                        ctx.proxy_port,
                     )
                     .await
                 }
