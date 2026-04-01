@@ -8,6 +8,12 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1073741824).toFixed(2)} GB`
 }
 
+function formatTime(epochMs: number): string {
+  if (!epochMs) return ''
+  const d = new Date(epochMs)
+  return d.toLocaleTimeString()
+}
+
 function StatCard({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
   return (
     <div className="bg-surface border border-border rounded-lg p-4">
@@ -95,7 +101,12 @@ export default function Dashboard() {
               .map(([host, count]) => (
                 <div key={host} className="flex items-center justify-between px-4 py-2.5 border-b border-border last:border-b-0 text-xs">
                   <span className="text-text truncate">{host}</span>
-                  <span className="text-text-dim ml-3 shrink-0">{count.toLocaleString()}</span>
+                  <div className="flex items-center gap-3 ml-3 shrink-0">
+                    {stats.per_host_last_request?.[host] ? (
+                      <span className="text-text-muted text-[10px]">{formatTime(stats.per_host_last_request[host])}</span>
+                    ) : null}
+                    <span className="text-text-dim">{count.toLocaleString()}</span>
+                  </div>
                 </div>
               ))}
           </div>
@@ -115,7 +126,7 @@ export default function Dashboard() {
             <div className="bg-surface border border-border rounded-lg overflow-hidden">
               {targets.map((t) => (
                 <div key={t.host} className="flex items-center justify-between px-4 py-2.5 border-b border-border last:border-b-0 text-xs">
-                  <span className="text-text truncate">{t.host}</span>
+                  <a href={`https://${t.host}`} target="_blank" rel="noopener noreferrer" className="text-text truncate hover:text-accent transition-colors">{t.host}</a>
                   <span className="text-text-dim ml-3 shrink-0">{t.address}</span>
                 </div>
               ))}

@@ -31,6 +31,7 @@ export interface Stats {
   bytes_sent: number;
   bytes_received: number;
   per_host_requests: Record<string, number>;
+  per_host_last_request: Record<string, number>;
 }
 
 export interface CertInfo {

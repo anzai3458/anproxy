@@ -99,7 +99,7 @@ export default function Targets() {
           </div>
           {items.map((t) => (
             <div key={t.host} className="sm:grid sm:grid-cols-[1fr_1fr_auto] px-4 py-3 border-b border-border last:border-b-0 text-xs items-center">
-              <div className="text-text font-medium truncate">{t.host}</div>
+              <a href={`https://${t.host}`} target="_blank" rel="noopener noreferrer" className="text-text font-medium truncate hover:text-accent transition-colors">{t.host}</a>
               <div className="text-text-dim truncate mt-0.5 sm:mt-0">{t.address}</div>
               <div className="flex gap-3 justify-end mt-2 sm:mt-0 w-24">
                 <button onClick={() => openEdit(t)} className="text-text-dim hover:text-accent transition-colors cursor-pointer">edit</button>

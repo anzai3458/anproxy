@@ -1,5 +1,5 @@
 use dashmap::DashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 
 pub struct Stats {
     pub active_connections: AtomicU64,
@@ -8,6 +8,7 @@ pub struct Stats {
     pub bytes_sent: AtomicU64,
     pub bytes_received: AtomicU64,
     pub per_host_requests: DashMap<String, AtomicU64>,
+    pub per_host_last_request: DashMap<String, AtomicI64>,
 }
 
 impl Stats {
@@ -19,6 +20,7 @@ impl Stats {
             bytes_sent: AtomicU64::new(0),
             bytes_received: AtomicU64::new(0),
             per_host_requests: DashMap::new(),
+            per_host_last_request: DashMap::new(),
         }
     }
 
@@ -28,6 +30,14 @@ impl Stats {
             .entry(host.to_string())
             .or_insert_with(|| AtomicU64::new(0))
             .fetch_add(1, Ordering::Relaxed);
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        self.per_host_last_request
+            .entry(host.to_string())
+            .or_insert_with(|| AtomicI64::new(0))
+            .store(now, Ordering::Relaxed);
     }
 
     pub fn inc_errors(&self) {

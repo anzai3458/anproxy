@@ -15,6 +15,12 @@ pub fn get_stats(stats: &Arc<Stats>) -> Response<BoxBody<Bytes, Error>> {
         .map(|entry| (entry.key().clone(), entry.value().load(Ordering::Relaxed)))
         .collect();
 
+    let per_host_last: std::collections::HashMap<String, i64> = stats
+        .per_host_last_request
+        .iter()
+        .map(|entry| (entry.key().clone(), entry.value().load(Ordering::Relaxed)))
+        .collect();
+
     json_ok(&serde_json::json!({
         "active_connections": stats.active_connections.load(Ordering::Relaxed),
         "total_requests": stats.total_requests.load(Ordering::Relaxed),
@@ -22,6 +28,7 @@ pub fn get_stats(stats: &Arc<Stats>) -> Response<BoxBody<Bytes, Error>> {
         "bytes_sent": stats.bytes_sent.load(Ordering::Relaxed),
         "bytes_received": stats.bytes_received.load(Ordering::Relaxed),
         "per_host_requests": per_host,
+        "per_host_last_request": per_host_last,
     }))
 }
 
