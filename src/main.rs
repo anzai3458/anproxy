@@ -37,8 +37,7 @@ async fn main() -> Result<(), Box<dyn StdError + Send + Sync + 'static>> {
         .with(log_buffer_layer);
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
-    let system_metrics = Arc::new(system_metrics::SystemMetrics::new());
-    system_metrics::spawn_collector(Arc::clone(&system_metrics));
+    let system_metrics = system_metrics::SystemMetrics::new();
 
     if resolved.no_tls {
         tracing::info!("TLS disabled - running in HTTP mode (NOT FOR PRODUCTION)");
