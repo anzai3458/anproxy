@@ -41,13 +41,7 @@ pub async fn add_target(
 
     let backend_str = match parsed.get("backend").and_then(|v| v.as_str()) {
         Some(s) => s,
-        None => {
-            // Backwards compatibility: try 'address' field
-            match parsed.get("address").and_then(|v| v.as_str()) {
-                Some(s) => s,
-                None => return json_err(StatusCode::BAD_REQUEST, "Invalid or missing 'backend' (expected http://ip:port or file:///path)"),
-            }
-        }
+        None => return json_err(StatusCode::BAD_REQUEST, "Invalid or missing 'backend' (expected http://ip:port or file:///path)"),
     };
 
     let backend = match parse_backend_string(backend_str) {
@@ -95,13 +89,7 @@ pub async fn update_target(
 
     let backend_str = match parsed.get("backend").and_then(|v| v.as_str()) {
         Some(s) => s,
-        None => {
-            // Backwards compatibility: try 'address' field
-            match parsed.get("address").and_then(|v| v.as_str()) {
-                Some(s) => s,
-                None => return json_err(StatusCode::BAD_REQUEST, "Invalid or missing 'backend'"),
-            }
-        }
+        None => return json_err(StatusCode::BAD_REQUEST, "Invalid or missing 'backend'"),
     };
 
     let backend = match parse_backend_string(backend_str) {
@@ -181,14 +169,6 @@ fn parse_backend_string(value: &str) -> Result<TargetBackend, String> {
             return Err("file:// path must be absolute".to_string());
         }
         Ok(TargetBackend::File(path))
-    } else if value.contains(':') {
-        // For backwards compatibility, assume bare address is http
-        let addr = value
-            .to_socket_addrs()
-            .map_err(|e| format!("Invalid address: {}", e))?
-            .next()
-            .ok_or_else(|| "Invalid address".to_string())?;
-        Ok(TargetBackend::Http(addr))
     } else {
         Err(format!(
             "Invalid backend '{}'. Expected http://ip:port or file:///path",

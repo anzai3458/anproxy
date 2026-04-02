@@ -41,16 +41,10 @@ pub fn parse_backend(value: &str) -> Result<TargetBackend, String> {
     } else if value.starts_with("file://") {
         parse_file_backend(value)
     } else {
-        // For backwards compatibility, assume bare address is http
-        // Check if it looks like an address (has a colon for port)
-        if value.contains(':') {
-            parse_http_backend(&format!("http://{}", value))
-        } else {
-            Err(format!(
-                "Invalid backend '{}'. Expected http://ip:port or file:///path",
-                value
-            ))
-        }
+        Err(format!(
+            "Invalid backend '{}'. Expected http://ip:port or file:///path",
+            value
+        ))
     }
 }
 
@@ -109,13 +103,11 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_backend_bare_address_backwards_compat() {
-        // For backwards compatibility
-        let b = parse_backend("127.0.0.1:8080").unwrap();
-        match b {
-            TargetBackend::Http(addr) => assert_eq!(addr.to_string(), "127.0.0.1:8080"),
-            _ => panic!("Expected Http"),
-        }
+    fn test_parse_backend_bare_address_rejected() {
+        // Bare addresses (without http://) should be rejected
+        let result = parse_backend("127.0.0.1:8080");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Expected http://ip:port or file:///path"));
     }
 
     #[test]

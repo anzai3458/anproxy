@@ -7,14 +7,7 @@ use crate::config::TargetBackend;
 #[derive(Debug, serde::Deserialize)]
 pub struct ConfigTarget {
     pub host: String,
-    #[serde(alias = "address")]
     pub backend: String,
-}
-
-#[derive(Debug, serde::Deserialize)]
-pub struct ConfigStaticDir {
-    pub host: String,
-    pub dir: String,
 }
 
 #[derive(Debug, Default, serde::Deserialize)]
@@ -24,7 +17,6 @@ pub struct Config {
     pub cert: Option<String>,
     pub key: Option<String>,
     pub targets: Vec<ConfigTarget>,
-    pub static_dirs: Vec<ConfigStaticDir>,
     pub log_level: Option<String>,
     pub admin_addr: Option<String>,
     pub admin_user: Option<String>,

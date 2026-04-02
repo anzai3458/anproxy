@@ -5,8 +5,6 @@ use std::path::{Path, PathBuf};
 use crate::cli::Options;
 use crate::config::parse::parse_backend;
 use crate::config::types::{Config, ResolvedConfig};
-use crate::config::Target;
-use crate::config::TargetBackend;
 
 fn resolve_path(raw: PathBuf, base: &Path) -> PathBuf {
     if raw.is_absolute() {
@@ -110,22 +108,6 @@ pub fn merge(opts: Options) -> Result<ResolvedConfig, Box<dyn StdError + Send + 
             })
             .collect::<Result<Vec<_>, String>>()?
     };
-
-    // Also handle old [[static_dirs]] format for backwards compatibility
-    let mut raw_targets = raw_targets;
-    if raw_targets.is_empty() {
-        // Only fall back to static_dirs if no targets defined
-        for sd in file_cfg.static_dirs {
-            tracing::warn!(
-                "[[static_dirs]] is deprecated, use [[targets]] with backend = 'file:///path' instead"
-            );
-            let backend = TargetBackend::File(PathBuf::from(&sd.dir));
-            raw_targets.push(Target {
-                host: sd.host,
-                backend,
-            });
-        }
-    }
 
     let targets = into_unique_map(
         raw_targets.into_iter().map(|t| (t.host, t.backend)).collect(),
