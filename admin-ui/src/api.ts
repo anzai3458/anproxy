@@ -54,6 +54,35 @@ export interface UploadResult {
   mbps: number;
 }
 
+export interface SystemMetrics {
+  uptime_secs: number
+  process_cpu_percent: number
+  process_memory_bytes: number
+  process_disk_read_bytes: number
+  process_disk_written_bytes: number
+  system_cpu_percent: number
+  system_memory_total: number
+  system_memory_used: number
+  system_swap_total: number
+  system_swap_used: number
+  disks: DiskInfo[]
+}
+
+export interface DiskInfo {
+  name: string
+  mount_point: string
+  total_bytes: number
+  available_bytes: number
+  fs_type: string
+}
+
+export interface LogEntry {
+  timestamp_ms: number
+  level: string
+  target: string
+  message: string
+}
+
 export const api = {
   login: (username: string, password: string) =>
     request('/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
@@ -83,4 +112,7 @@ export const api = {
   speedTestDownload: () => fetch(`${BASE}/speed-test/download`),
   speedTestUpload: (data: Blob) =>
     fetch(`${BASE}/speed-test/upload`, { method: 'POST', body: data }),
+
+  getSystemMetrics: () => request<SystemMetrics>('/system'),
+  getLogs: (lines = 200) => request<LogEntry[]>(`/logs?lines=${lines}`),
 };

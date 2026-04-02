@@ -12,6 +12,7 @@ use crate::admin::api_certs;
 use crate::admin::api_speed_test::{self, SpeedTestLimiter};
 use crate::admin::api_static_dirs;
 use crate::admin::api_stats;
+use crate::admin::api_system;
 use crate::admin::api_targets;
 use crate::admin::assets::serve_asset;
 use crate::admin::auth::{
@@ -19,7 +20,9 @@ use crate::admin::auth::{
 };
 use crate::admin::response::json_err;
 use crate::config::types::SharedConfig;
+use crate::log_buffer::LogBufferHandle;
 use crate::stats::Stats;
+use crate::system_metrics::SystemMetrics;
 
 /// TLS-specific context for admin server
 pub struct TlsContext {
@@ -71,6 +74,8 @@ pub async fn route(
     tls_context: Option<TlsContext>,
     speed_test_limiter: Arc<SpeedTestLimiter>,
     proxy_port: u16,
+    system_metrics: Arc<SystemMetrics>,
+    log_buffer: LogBufferHandle,
 ) -> Result<Response<BoxBody<Bytes, Error>>, String> {
     let method = req.method().clone();
     let path = req.uri().path().to_string();
@@ -156,6 +161,15 @@ pub async fn route(
 
         // Stats & Certs
         (Method::GET, "/api/stats") => Ok(api_stats::get_stats(&stats, proxy_port)),
+        (Method::GET, "/api/system") => Ok(api_system::get_system_metrics(&system_metrics)),
+        (Method::GET, p) if p.starts_with("/api/logs") => {
+            let lines = req.uri().query()
+                .and_then(|q| q.split('&').find(|p| p.starts_with("lines=")))
+                .and_then(|p| p.strip_prefix("lines="))
+                .and_then(|v| v.parse::<usize>().ok())
+                .unwrap_or(200);
+            Ok(api_system::get_logs(&log_buffer, lines))
+        }
         (Method::GET, "/api/certs") => {
             if let Some(ref ctx) = tls_context {
                 Ok(api_certs::get_cert_info(&ctx.cert_path, &ctx.key_path))

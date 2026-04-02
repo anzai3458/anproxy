@@ -7,6 +7,7 @@ import Targets from './pages/Targets.tsx'
 import StaticDirs from './pages/StaticDirs.tsx'
 import Certs from './pages/Certs.tsx'
 import SpeedTest from './pages/SpeedTest.tsx'
+import System from './pages/System.tsx'
 
 const AuthContext = createContext<{
   authed: boolean
@@ -23,6 +24,7 @@ const NAV = [
   { to: '/static', label: 'static' },
   { to: '/certs', label: 'certs' },
   { to: '/speed', label: 'speed' },
+  { to: '/system', label: 'system' },
 ] as const
 
 function Layout({ children }: { children: ReactNode }) {
@@ -130,6 +132,7 @@ export default function App() {
           <Route path="/static" element={<ProtectedRoute><StaticDirs /></ProtectedRoute>} />
           <Route path="/certs" element={<ProtectedRoute><Certs /></ProtectedRoute>} />
           <Route path="/speed" element={<ProtectedRoute><SpeedTest /></ProtectedRoute>} />
+          <Route path="/system" element={<ProtectedRoute><System /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </HashRouter>

@@ -1,7 +1,9 @@
 mod cli;
 mod admin;
 mod config;
+mod log_buffer;
 mod proxy;
+mod system_metrics;
 mod tls;
 mod stats;
 
@@ -25,7 +27,18 @@ async fn main() -> Result<(), Box<dyn StdError + Send + Sync + 'static>> {
 
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(&resolved.log_level));
-    tracing_subscriber::fmt().with_env_filter(filter).init();
+
+    let log_buffer_layer = log_buffer::LogBuffer::new(1000);
+    let log_buffer = log_buffer_layer.handle();
+    use tracing_subscriber::layer::SubscriberExt;
+    let subscriber = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .finish()
+        .with(log_buffer_layer);
+    tracing::subscriber::set_global_default(subscriber).unwrap();
+
+    let system_metrics = Arc::new(system_metrics::SystemMetrics::new());
+    system_metrics::spawn_collector(Arc::clone(&system_metrics));
 
     if resolved.no_tls {
         tracing::info!("TLS disabled - running in HTTP mode (NOT FOR PRODUCTION)");
@@ -62,6 +75,8 @@ async fn main() -> Result<(), Box<dyn StdError + Send + Sync + 'static>> {
                 admin_pass,
                 resolved.config_file,
                 addr.port(),
+                system_metrics.clone(),
+                log_buffer.clone(),
             ));
         }
 
@@ -122,6 +137,8 @@ async fn main() -> Result<(), Box<dyn StdError + Send + Sync + 'static>> {
                 cert_path,
                 key_path,
                 addr.port(),
+                system_metrics.clone(),
+                log_buffer.clone(),
             ));
         }
 

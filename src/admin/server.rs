@@ -12,7 +12,9 @@ use tokio_rustls::TlsAcceptor;
 use crate::admin::api_speed_test;
 use crate::admin::auth::SessionStore;
 use crate::config::types::SharedConfig;
+use crate::log_buffer::LogBufferHandle;
 use crate::stats::Stats;
+use crate::system_metrics::SystemMetrics;
 
 /// Admin context that holds all dependencies for the admin server
 #[derive(Clone)]
@@ -25,6 +27,8 @@ pub struct AdminContext {
     pub admin_pass: String,
     pub config_path: Option<PathBuf>,
     pub proxy_port: u16,
+    pub system_metrics: Arc<SystemMetrics>,
+    pub log_buffer: LogBufferHandle,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -40,6 +44,8 @@ pub async fn run_admin_server(
     cert_path: PathBuf,
     key_path: PathBuf,
     proxy_port: u16,
+    system_metrics: Arc<SystemMetrics>,
+    log_buffer: LogBufferHandle,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let session_store = Arc::new(SessionStore::new(Duration::from_secs(1800)));
     let speed_test_limiter = Arc::new(api_speed_test::new_limiter());
@@ -78,6 +84,8 @@ pub async fn run_admin_server(
             key_path: tls_context.key_path.clone(),
         };
         let speed_test_limiter = Arc::clone(&speed_test_limiter);
+        let system_metrics = Arc::clone(&system_metrics);
+        let log_buffer = log_buffer.clone();
 
         tokio::spawn(async move {
             let tls_stream = match acceptor.accept(stream).await {
@@ -98,6 +106,8 @@ pub async fn run_admin_server(
                 config_path,
                 speed_test_limiter,
                 proxy_port,
+                system_metrics: Arc::clone(&system_metrics),
+                log_buffer: log_buffer.clone(),
             };
 
             let service = service_fn(move |req| {
@@ -115,6 +125,8 @@ pub async fn run_admin_server(
                         Some(tls_context),
                         ctx.speed_test_limiter,
                         ctx.proxy_port,
+                        ctx.system_metrics,
+                        ctx.log_buffer,
                     )
                     .await
                 }
@@ -131,6 +143,7 @@ pub async fn run_admin_server(
 }
 
 /// Run admin server in plain HTTP mode (for --no-tls)
+#[allow(clippy::too_many_arguments)]
 pub async fn run_admin_server_plain(
     addr: SocketAddr,
     config: SharedConfig,
@@ -139,6 +152,8 @@ pub async fn run_admin_server_plain(
     admin_pass: String,
     config_path: Option<PathBuf>,
     proxy_port: u16,
+    system_metrics: Arc<SystemMetrics>,
+    log_buffer: LogBufferHandle,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let session_store = Arc::new(SessionStore::new(Duration::from_secs(1800)));
     let speed_test_limiter = Arc::new(api_speed_test::new_limiter());
@@ -165,6 +180,8 @@ pub async fn run_admin_server_plain(
         let admin_pass = admin_pass.clone();
         let config_path = config_path.clone();
         let speed_test_limiter = Arc::clone(&speed_test_limiter);
+        let system_metrics = Arc::clone(&system_metrics);
+        let log_buffer = log_buffer.clone();
 
         tokio::spawn(async move {
             let io = TokioIo::new(stream);
@@ -178,6 +195,8 @@ pub async fn run_admin_server_plain(
                 config_path,
                 speed_test_limiter,
                 proxy_port,
+                system_metrics: Arc::clone(&system_metrics),
+                log_buffer: log_buffer.clone(),
             };
 
             let service = service_fn(move |req| {
@@ -194,6 +213,8 @@ pub async fn run_admin_server_plain(
                         None::<crate::admin::router::TlsContext>,
                         ctx.speed_test_limiter,
                         ctx.proxy_port,
+                        ctx.system_metrics,
+                        ctx.log_buffer,
                     )
                     .await
                 }
