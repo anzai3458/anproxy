@@ -73,7 +73,7 @@ export default function System() {
   useEffect(() => {
     fetchMetrics()
     fetchLogs()
-    const metricsId = setInterval(fetchMetrics, 5000)
+    const metricsId = setInterval(fetchMetrics, 6000)
     const logsId = setInterval(fetchLogs, 3000)
     return () => { clearInterval(metricsId); clearInterval(logsId) }
   }, [fetchMetrics, fetchLogs])
@@ -101,7 +101,7 @@ export default function System() {
     <div className="space-y-6 animate-fade-in">
       <h1 className="text-sm font-semibold text-text-dim flex items-center gap-2">
         <span className="text-accent">~</span> system
-        <CircleTimer interval={5000} size={14} strokeWidth={1.5} className="text-accent" />
+        <CircleTimer interval={6000} size={14} strokeWidth={1.5} className="text-accent" />
       </h1>
 
       {/* Uptime */}
