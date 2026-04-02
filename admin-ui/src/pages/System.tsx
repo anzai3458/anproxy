@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { api, type SystemMetrics, type LogEntry } from '../api.ts'
+import { CircleTimer } from '../components/CircleTimer.tsx'
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -31,12 +32,12 @@ function StatCard({ label, value, sub, color }: { label: string; value: string; 
   )
 }
 
-function UsageBar({ used, total, label }: { used: number; total: number; label: string }) {
+function UsageBar({ used, total, label, title }: { used: number; total: number; label: string; title?: string }) {
   const pct = total > 0 ? (used / total) * 100 : 0
   const color = pct > 90 ? 'bg-red' : pct > 70 ? 'bg-yellow' : 'bg-accent'
   return (
     <div className="flex items-center gap-3 px-4 py-2.5 border-b border-border last:border-b-0">
-      <span className="text-xs text-text w-32 truncate">{label}</span>
+      <span className="text-xs text-text w-32 truncate" title={title || label}>{label}</span>
       <div className="flex-1 h-2 bg-surface-alt rounded-full overflow-hidden">
         <div className={`h-full ${color} rounded-full transition-all`} style={{ width: `${Math.min(pct, 100)}%` }} />
       </div>
@@ -115,6 +116,9 @@ export default function System() {
         <div>
           <h2 className="text-xs text-text-dim mb-3">
             <span className="text-accent">$</span> memory
+            <span className="inline-flex items-center ml-2 align-middle">
+              <CircleTimer interval={5000} size={14} strokeWidth={1.5} className="text-accent" />
+            </span>
           </h2>
           <div className="bg-surface border border-border rounded-lg overflow-hidden">
             <UsageBar used={metrics.system_memory_used} total={metrics.system_memory_total} label="RAM" />
@@ -130,6 +134,9 @@ export default function System() {
         <div>
           <h2 className="text-xs text-text-dim mb-3">
             <span className="text-accent">$</span> disks
+            <span className="inline-flex items-center ml-2 align-middle">
+              <CircleTimer interval={5000} size={14} strokeWidth={1.5} className="text-accent" />
+            </span>
           </h2>
           <div className="bg-surface border border-border rounded-lg overflow-hidden">
             {metrics.disks.map((d, i) => (
@@ -138,6 +145,7 @@ export default function System() {
                 used={d.total_bytes - d.available_bytes}
                 total={d.total_bytes}
                 label={`${d.mount_point} (${d.fs_type})`}
+                title={`${d.mount_point} (${d.fs_type})`}
               />
             ))}
           </div>
@@ -147,8 +155,9 @@ export default function System() {
       {/* Logs */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xs text-text-dim">
+          <h2 className="text-xs text-text-dim flex items-center gap-2">
             <span className="text-accent">$</span> logs
+            <CircleTimer interval={3000} size={12} strokeWidth={1.5} className="text-accent" />
           </h2>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1">

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api, type Stats, type Target, type CertInfo } from '../api.ts'
+import { CircleTimer } from '../components/CircleTimer.tsx'
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -57,8 +58,9 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <h1 className="text-sm font-semibold text-text-dim">
+      <h1 className="text-sm font-semibold text-text-dim flex items-center gap-2">
         <span className="text-accent">~</span> overview
+        <CircleTimer interval={5000} size={14} strokeWidth={1.5} className="text-accent" />
       </h1>
 
       {/* Stats grid */}
