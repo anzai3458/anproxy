@@ -97,6 +97,13 @@ pub async fn proxy(
             );
             return Ok(count_sent(resp, &stats));
         }
+        // File backend but file not found - return 404 (not an error)
+        return Ok::<Response<BoxBody<Bytes, Error>>, String>(
+            Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(BoxBody::default())
+                .unwrap(),
+        );
     }
 
     let (parts, body) = req.into_parts();
@@ -112,8 +119,8 @@ pub async fn proxy(
     let target_addr = match backend {
         Some(TargetBackend::Http(addr)) => Some(addr),
         Some(TargetBackend::File(_)) => {
-            // Already tried file serving above, and it failed
-            tracing::warn!(peer = %peer_addr, %host, "no file found for static dir host");
+            // This should never happen - File backends are handled above
+            tracing::error!(peer = %peer_addr, %host, "file backend reached HTTP handler - logic error");
             None
         }
         None => {

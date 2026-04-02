@@ -6,7 +6,6 @@ use crate::cli::Options;
 use crate::config::parse::parse_backend;
 use crate::config::types::{Config, ResolvedConfig};
 use crate::config::Target;
-use crate::config::TargetBackend;
 
 fn resolve_path(raw: PathBuf, base: &Path) -> PathBuf {
     if raw.is_absolute() {
@@ -151,6 +150,7 @@ pub fn merge(opts: Options) -> Result<ResolvedConfig, Box<dyn StdError + Send + 
 mod tests {
     use super::*;
     use crate::config::parse::parse_host_mapping;
+    use crate::config::TargetBackend;
     use std::io::Write;
     use tempfile::NamedTempFile;
 
