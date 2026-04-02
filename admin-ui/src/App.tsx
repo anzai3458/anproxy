@@ -4,7 +4,6 @@ import { api } from './api.ts'
 import Login from './pages/Login.tsx'
 import Dashboard from './pages/Dashboard.tsx'
 import Targets from './pages/Targets.tsx'
-import StaticDirs from './pages/StaticDirs.tsx'
 import Certs from './pages/Certs.tsx'
 import SpeedTest from './pages/SpeedTest.tsx'
 import System from './pages/System.tsx'
@@ -21,7 +20,6 @@ export function useAuth() {
 const NAV = [
   { to: '/', label: 'overview' },
   { to: '/targets', label: 'targets' },
-  { to: '/static', label: 'static' },
   { to: '/certs', label: 'certs' },
   { to: '/speed', label: 'speed' },
   { to: '/system', label: 'system' },
@@ -129,7 +127,6 @@ export default function App() {
           <Route path="/login" element={authed ? <Navigate to="/" replace /> : <Login />} />
           <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/targets" element={<ProtectedRoute><Targets /></ProtectedRoute>} />
-          <Route path="/static" element={<ProtectedRoute><StaticDirs /></ProtectedRoute>} />
           <Route path="/certs" element={<ProtectedRoute><Certs /></ProtectedRoute>} />
           <Route path="/speed" element={<ProtectedRoute><SpeedTest /></ProtectedRoute>} />
           <Route path="/system" element={<ProtectedRoute><System /></ProtectedRoute>} />

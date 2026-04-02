@@ -16,12 +16,7 @@ async function request<T = unknown>(path: string, options?: RequestInit): Promis
 
 export interface Target {
   host: string;
-  address: string;
-}
-
-export interface StaticDir {
-  host: string;
-  dir: string;
+  backend: string;
 }
 
 export interface Stats {
@@ -89,20 +84,12 @@ export const api = {
   logout: () => request('/logout', { method: 'POST' }),
 
   getTargets: () => request<Target[]>('/targets'),
-  addTarget: (host: string, address: string) =>
-    request<Target>('/targets', { method: 'POST', body: JSON.stringify({ host, address }) }),
-  updateTarget: (host: string, address: string) =>
-    request<Target>(`/targets/${encodeURIComponent(host)}`, { method: 'PUT', body: JSON.stringify({ address }) }),
+  addTarget: (host: string, backend: string) =>
+    request<Target>('/targets', { method: 'POST', body: JSON.stringify({ host, backend }) }),
+  updateTarget: (host: string, backend: string) =>
+    request<Target>(`/targets/${encodeURIComponent(host)}`, { method: 'PUT', body: JSON.stringify({ backend }) }),
   deleteTarget: (host: string) =>
     request(`/targets/${encodeURIComponent(host)}`, { method: 'DELETE' }),
-
-  getStaticDirs: () => request<StaticDir[]>('/static-dirs'),
-  addStaticDir: (host: string, dir: string) =>
-    request<StaticDir>('/static-dirs', { method: 'POST', body: JSON.stringify({ host, dir }) }),
-  updateStaticDir: (host: string, dir: string) =>
-    request<StaticDir>(`/static-dirs/${encodeURIComponent(host)}`, { method: 'PUT', body: JSON.stringify({ dir }) }),
-  deleteStaticDir: (host: string) =>
-    request(`/static-dirs/${encodeURIComponent(host)}`, { method: 'DELETE' }),
 
   getStats: () => request<Stats>('/stats'),
   getCerts: () => request<CertInfo>('/certs'),

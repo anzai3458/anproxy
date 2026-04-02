@@ -3,9 +3,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::cli::Options;
-use crate::config::parse::parse_socket_addr;
+use crate::config::parse::parse_backend;
 use crate::config::types::{Config, ResolvedConfig};
-use crate::config::{StaticDir, Target};
+use crate::config::Target;
+use crate::config::TargetBackend;
 
 fn resolve_path(raw: PathBuf, base: &Path) -> PathBuf {
     if raw.is_absolute() {
@@ -56,7 +57,7 @@ pub fn merge(opts: Options) -> Result<ResolvedConfig, Box<dyn StdError + Send + 
         .addr
         .or(file_cfg.addr)
         .ok_or("addr is required (positional arg or config file 'addr')")?;
-    let addr = parse_socket_addr(&addr_str)
+    let addr = crate::config::parse::parse_socket_addr(&addr_str)
         .map_err(|e| format!("Invalid addr '{}': {}", addr_str, e))?;
 
     let cert = opts
@@ -88,6 +89,7 @@ pub fn merge(opts: Options) -> Result<ResolvedConfig, Box<dyn StdError + Send + 
         }
     }
 
+    // Collect targets from CLI or config file
     let raw_targets: Vec<Target> = if !opts.targets.is_empty() {
         opts.targets
     } else {
@@ -95,47 +97,39 @@ pub fn merge(opts: Options) -> Result<ResolvedConfig, Box<dyn StdError + Send + 
             .targets
             .into_iter()
             .map(|ct| {
-                let a = parse_socket_addr(&ct.address).map_err(|e| {
+                let backend = parse_backend(&ct.backend).map_err(|e| {
                     format!(
-                        "Invalid address '{}' for host '{}': {}",
-                        ct.address, ct.host, e
+                        "Invalid backend '{}' for host '{}': {}",
+                        ct.backend, ct.host, e
                     )
                 })?;
                 Ok(Target {
                     host: ct.host,
-                    address: a,
+                    backend,
                 })
             })
             .collect::<Result<Vec<_>, String>>()?
     };
 
+    // Also handle old [[static_dirs]] format for backwards compatibility
+    let mut raw_targets = raw_targets;
+    if raw_targets.is_empty() {
+        // Only fall back to static_dirs if no targets defined
+        for sd in file_cfg.static_dirs {
+            tracing::warn!(
+                "[[static_dirs]] is deprecated, use [[targets]] with backend = 'file:///path' instead"
+            );
+            let backend = TargetBackend::File(PathBuf::from(&sd.dir));
+            raw_targets.push(Target {
+                host: sd.host,
+                backend,
+            });
+        }
+    }
+
     let targets = into_unique_map(
-        raw_targets.into_iter().map(|t| (t.host, t.address)).collect(),
+        raw_targets.into_iter().map(|t| (t.host, t.backend)).collect(),
         "target",
-    )?;
-
-    let raw_static_dirs: Vec<StaticDir> = if !opts.static_dirs.is_empty() {
-        opts.static_dirs
-            .into_iter()
-            .map(|s| StaticDir {
-                host: s.host,
-                dir: resolve_path(s.dir, &cli_base),
-            })
-            .collect()
-    } else {
-        file_cfg
-            .static_dirs
-            .into_iter()
-            .map(|cs| StaticDir {
-                host: cs.host,
-                dir: resolve_path(PathBuf::from(cs.dir), &cfg_base),
-            })
-            .collect()
-    };
-
-    let static_dirs = into_unique_map(
-        raw_static_dirs.into_iter().map(|s| (s.host, s.dir)).collect(),
-        "static_dir",
     )?;
 
     let log_level = opts
@@ -145,7 +139,7 @@ pub fn merge(opts: Options) -> Result<ResolvedConfig, Box<dyn StdError + Send + 
 
     let admin_addr_str = opts.admin_addr.or(file_cfg.admin_addr);
     let admin_addr = admin_addr_str
-        .map(|s| parse_socket_addr(&s).map_err(|e| format!("Invalid admin_addr '{}': {}", s, e)))
+        .map(|s| crate::config::parse::parse_socket_addr(&s).map_err(|e| format!("Invalid admin_addr '{}': {}", s, e)))
         .transpose()?;
 
     let admin_user = opts.admin_user.or(file_cfg.admin_user);
@@ -161,7 +155,6 @@ pub fn merge(opts: Options) -> Result<ResolvedConfig, Box<dyn StdError + Send + 
         cert,
         key,
         log_level,
-        static_dirs,
         admin_addr,
         admin_user,
         admin_pass,
@@ -194,7 +187,6 @@ mod tests {
         Options {
             addr: addr.map(str::to_string),
             targets,
-            static_dirs: vec![],
             cert: cert.map(PathBuf::from),
             key: key.map(PathBuf::from),
             config_file,
@@ -217,11 +209,11 @@ key  = "/etc/anproxy/key.pem"
 
 [[targets]]
 host    = "example.com"
-address = "127.0.0.1:8080"
+backend = "http://127.0.0.1:8080"
 
 [[targets]]
 host    = "api.example.com"
-address = "127.0.0.1:9090"
+backend = "http://127.0.0.1:9090"
 "#;
         let f = write_toml_config(toml);
         let cfg = load_config_file(&f.path().to_path_buf()).unwrap();
@@ -230,9 +222,9 @@ address = "127.0.0.1:9090"
         assert_eq!(cfg.key.as_deref(), Some("/etc/anproxy/key.pem"));
         assert_eq!(cfg.targets.len(), 2);
         assert_eq!(cfg.targets[0].host, "example.com");
-        assert_eq!(cfg.targets[0].address, "127.0.0.1:8080");
+        assert_eq!(cfg.targets[0].backend, "http://127.0.0.1:8080");
         assert_eq!(cfg.targets[1].host, "api.example.com");
-        assert_eq!(cfg.targets[1].address, "127.0.0.1:9090");
+        assert_eq!(cfg.targets[1].backend, "http://127.0.0.1:9090");
     }
 
     #[test]
@@ -279,7 +271,7 @@ key  = "/etc/anproxy/key.pem"
     fn test_merge_cli_only() {
         let opts = make_opts(
             Some("127.0.0.1:8443"),
-            vec![parse_host_mapping("example.com@127.0.0.1:8080").unwrap()],
+            vec![parse_host_mapping("example.com@http://127.0.0.1:8080").unwrap()],
             Some("/tmp/cert.pem"),
             Some("/tmp/key.pem"),
             None,
@@ -290,6 +282,10 @@ key  = "/etc/anproxy/key.pem"
         assert_eq!(r.key, Some(PathBuf::from("/tmp/key.pem")));
         assert_eq!(r.targets.len(), 1);
         assert!(r.targets.contains_key("example.com"));
+        match &r.targets["example.com"] {
+            TargetBackend::Http(addr) => assert_eq!(addr.to_string(), "127.0.0.1:8080"),
+            _ => panic!("Expected Http backend"),
+        }
     }
 
     #[test]
@@ -301,7 +297,7 @@ key  = "/cfg/key.pem"
 
 [[targets]]
 host    = "cfg.example.com"
-address = "127.0.0.1:7070"
+backend = "http://127.0.0.1:7070"
 "#;
         let f = write_toml_config(toml);
         let opts = make_opts(None, vec![], None, None, Some(f.path().to_path_buf()));
@@ -361,12 +357,12 @@ key  = "/cfg/key.pem"
 
 [[targets]]
 host    = "cfg.example.com"
-address = "127.0.0.1:7070"
+backend = "http://127.0.0.1:7070"
 "#;
         let f = write_toml_config(toml);
         let opts = make_opts(
             None,
-            vec![parse_host_mapping("cli.example.com@127.0.0.1:8080").unwrap()],
+            vec![parse_host_mapping("cli.example.com@http://127.0.0.1:8080").unwrap()],
             None,
             None,
             Some(f.path().to_path_buf()),
@@ -386,7 +382,7 @@ key  = "/cfg/key.pem"
 
 [[targets]]
 host    = "cfg.example.com"
-address = "127.0.0.1:7070"
+backend = "http://127.0.0.1:7070"
 "#;
         let f = write_toml_config(toml);
         let opts = make_opts(None, vec![], None, None, Some(f.path().to_path_buf()));
@@ -432,7 +428,7 @@ cert = "/cfg/cert.pem"
     }
 
     #[test]
-    fn test_merge_invalid_target_addr_in_config() {
+    fn test_merge_invalid_target_backend_in_config() {
         let toml = r#"
 addr = "0.0.0.0:9000"
 cert = "/cfg/cert.pem"
@@ -440,7 +436,7 @@ key  = "/cfg/key.pem"
 
 [[targets]]
 host    = "bad.example.com"
-address = "not-a-valid-addr"
+backend = "not-a-valid-backend"
 "#;
         let f = write_toml_config(toml);
         let opts = make_opts(None, vec![], None, None, Some(f.path().to_path_buf()));
@@ -449,59 +445,36 @@ address = "not-a-valid-addr"
     }
 
     #[test]
-    fn test_merge_static_dirs_from_config_file() {
+    fn test_merge_targets_from_config_file() {
         let toml = r#"
 addr = "0.0.0.0:9000"
 cert = "/cfg/cert.pem"
 key  = "/cfg/key.pem"
 
-[[static_dirs]]
+[[targets]]
+host = "example.com"
+backend = "http://127.0.0.1:8080"
+
+[[targets]]
 host = "static.example.com"
-dir  = "/var/www/html"
+backend = "file:///var/www/html"
 "#;
         let f = write_toml_config(toml);
         let opts = make_opts(None, vec![], None, None, Some(f.path().to_path_buf()));
         let r = merge(opts).unwrap();
-        assert_eq!(r.static_dirs.len(), 1);
-        assert_eq!(
-            r.static_dirs.get("static.example.com"),
-            Some(&PathBuf::from("/var/www/html"))
-        );
-        assert!(!r.no_tls);
-    }
+        assert_eq!(r.targets.len(), 2);
 
-    #[test]
-    fn test_merge_cli_static_dirs_replace_config() {
-        let toml = r#"
-addr = "0.0.0.0:9000"
-cert = "/cfg/cert.pem"
-key  = "/cfg/key.pem"
+        assert!(r.targets.contains_key("example.com"));
+        match &r.targets["example.com"] {
+            TargetBackend::Http(addr) => assert_eq!(addr.to_string(), "127.0.0.1:8080"),
+            _ => panic!("Expected Http backend"),
+        }
 
-[[static_dirs]]
-host = "cfg.example.com"
-dir  = "/var/www/cfg"
-"#;
-        let f = write_toml_config(toml);
-        let opts = Options {
-            addr: None,
-            targets: vec![],
-            static_dirs: vec![crate::config::StaticDir {
-                host: "cli.example.com".to_string(),
-                dir: PathBuf::from("/var/www/cli"),
-            }],
-            cert: None,
-            key: None,
-            config_file: Some(f.path().to_path_buf()),
-            log_level: None,
-            admin_addr: None,
-            admin_user: None,
-            admin_pass: None,
-            no_tls: false,
-        };
-        let r = merge(opts).unwrap();
-        assert_eq!(r.static_dirs.len(), 1);
-        assert!(r.static_dirs.contains_key("cli.example.com"));
-        assert!(!r.static_dirs.contains_key("cfg.example.com"));
+        assert!(r.targets.contains_key("static.example.com"));
+        match &r.targets["static.example.com"] {
+            TargetBackend::File(path) => assert_eq!(path.to_string_lossy(), "/var/www/html"),
+            _ => panic!("Expected File backend"),
+        }
     }
 
     #[test]
@@ -513,11 +486,11 @@ key  = "/cfg/key.pem"
 
 [[targets]]
 host    = "example.com"
-address = "127.0.0.1:8080"
+backend = "http://127.0.0.1:8080"
 
 [[targets]]
 host    = "example.com"
-address = "127.0.0.1:9090"
+backend = "http://127.0.0.1:9090"
 "#;
         let f = write_toml_config(toml);
         let opts = make_opts(None, vec![], None, None, Some(f.path().to_path_buf()));
@@ -527,36 +500,13 @@ address = "127.0.0.1:9090"
     }
 
     #[test]
-    fn test_merge_duplicate_static_dir_in_config_errors() {
-        let toml = r#"
-addr = "0.0.0.0:9000"
-cert = "/cfg/cert.pem"
-key  = "/cfg/key.pem"
-
-[[static_dirs]]
-host = "static.example.com"
-dir  = "/var/www/a"
-
-[[static_dirs]]
-host = "static.example.com"
-dir  = "/var/www/b"
-"#;
-        let f = write_toml_config(toml);
-        let opts = make_opts(None, vec![], None, None, Some(f.path().to_path_buf()));
-        let err = merge(opts).unwrap_err();
-        assert!(err.to_string().contains("duplicate"));
-        assert!(err.to_string().contains("static.example.com"));
-    }
-
-    #[test]
     fn test_merge_duplicate_target_via_cli_errors() {
         let opts = Options {
             addr: Some("127.0.0.1:8443".to_string()),
             targets: vec![
-                parse_host_mapping("example.com@127.0.0.1:8080").unwrap(),
-                parse_host_mapping("example.com@127.0.0.1:9090").unwrap(),
+                parse_host_mapping("example.com@http://127.0.0.1:8080").unwrap(),
+                parse_host_mapping("example.com@http://127.0.0.1:9090").unwrap(),
             ],
-            static_dirs: vec![],
             cert: Some(PathBuf::from("/tmp/cert.pem")),
             key: Some(PathBuf::from("/tmp/key.pem")),
             config_file: None,
@@ -626,7 +576,7 @@ key  = "/cfg/key.pem"
 
 [[targets]]
 host    = "example.com"
-address = "127.0.0.1:8080"
+backend = "http://127.0.0.1:8080"
 "#;
         let f = write_toml_config(toml);
         let cfg = load_config_file(&f.path().to_path_buf()).unwrap();

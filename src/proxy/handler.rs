@@ -15,6 +15,7 @@ use tokio::io::split;
 use tokio::net::TcpStream;
 
 use crate::config::types::SharedConfig;
+use crate::config::TargetBackend;
 use crate::proxy::static_handler::serve_static;
 use crate::stats::Stats;
 
@@ -80,17 +81,15 @@ pub async fn proxy(
 
     stats.inc_requests(&hostname);
 
-    let (static_dir, target_addr) = {
+    // Get backend for this hostname
+    let backend = {
         let cfg = config.read().unwrap();
-        (
-            cfg.static_dirs.get(&hostname).cloned(),
-            cfg.targets.get(&hostname).copied(),
-        )
+        cfg.targets.get(&hostname).cloned()
     };
 
-    // Try static file serving before proxy.
-    if let Some(ref static_dir) = static_dir {
-        if let Some(resp) = serve_static(&req, static_dir).await {
+    // Try static file serving first if this is a file backend
+    if let Some(TargetBackend::File(ref dir)) = backend {
+        if let Some(resp) = serve_static(&req, dir).await {
             tracing::info!(
                 peer = %peer_addr, %host, %method, %path,
                 status = resp.status().as_u16(),
@@ -109,8 +108,21 @@ pub async fn proxy(
     };
     let mut req_from_client = Request::from_parts(parts, counting_body.boxed());
 
+    // Get the HTTP backend address if this is an HTTP backend
+    let target_addr = match backend {
+        Some(TargetBackend::Http(addr)) => Some(addr),
+        Some(TargetBackend::File(_)) => {
+            // Already tried file serving above, and it failed
+            tracing::warn!(peer = %peer_addr, %host, "no file found for static dir host");
+            None
+        }
+        None => {
+            tracing::warn!(peer = %peer_addr, %host, "no target configured for host");
+            None
+        }
+    };
+
     if target_addr.is_none() {
-        tracing::warn!(peer = %peer_addr, %host, "no target configured for host");
         stats.inc_errors();
         return Ok::<Response<BoxBody<Bytes, Error>>, String>(
             Response::builder()

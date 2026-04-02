@@ -2,7 +2,7 @@ use std::path::Path;
 
 use crate::config::types::RuntimeConfig;
 
-/// Read-modify-write: loads existing config file, updates targets/static_dirs,
+/// Read-modify-write: loads existing config file, updates targets,
 /// preserves all other fields, and atomically writes to disk.
 pub async fn persist_config(
     config: &RuntimeConfig,
@@ -12,33 +12,24 @@ pub async fn persist_config(
     let existing = tokio::fs::read_to_string(config_path)
         .await
         .unwrap_or_default();
-    let mut doc: toml::Table = existing.parse::<toml::Table>().unwrap_or_default();
+    let mut doc: toml::Table = existing.parse::<>().unwrap_or_default();
 
     // Update targets
     let targets: Vec<toml::Value> = config
         .targets
         .iter()
-        .map(|(host, addr)| {
+        .map(|(host, backend)| {
             let mut t = toml::Table::new();
             t.insert("host".into(), toml::Value::String(host.clone()));
-            t.insert("address".into(), toml::Value::String(addr.to_string()));
+            t.insert("backend".into(), toml::Value::String(backend.to_string()));
             toml::Value::Table(t)
         })
         .collect();
     doc.insert("targets".into(), toml::Value::Array(targets));
 
-    // Update static_dirs
-    let static_dirs: Vec<toml::Value> = config
-        .static_dirs
-        .iter()
-        .map(|(host, dir)| {
-            let mut t = toml::Table::new();
-            t.insert("host".into(), toml::Value::String(host.clone()));
-            t.insert("dir".into(), toml::Value::String(dir.display().to_string()));
-            toml::Value::Table(t)
-        })
-        .collect();
-    doc.insert("static_dirs".into(), toml::Value::Array(static_dirs));
+    // Note: static_dirs section is no longer written (unified into targets)
+    // Keep old static_dirs in file for backwards compatibility if present,
+    // but we're not updating it anymore.
 
     let toml_str = toml::to_string_pretty(&doc)
         .map_err(|e| format!("Failed to serialize config: {}", e))?;
@@ -59,7 +50,7 @@ pub async fn persist_config(
 mod tests {
     use super::*;
     use std::collections::HashMap;
-    use std::net::SocketAddr;
+    use crate::config::TargetBackend;
 
     #[tokio::test]
     async fn test_persist_config_writes_toml() {
@@ -68,16 +59,19 @@ mod tests {
         let mut targets = HashMap::new();
         targets.insert(
             "a.com".to_string(),
-            "1.2.3.4:80".parse::<SocketAddr>().unwrap(),
+            TargetBackend::Http("1.2.3.4:80".parse().unwrap()),
         );
-        let config = RuntimeConfig {
-            targets,
-            static_dirs: HashMap::new(),
-        };
+        targets.insert(
+            "static.com".to_string(),
+            TargetBackend::File(std::path::PathBuf::from("/var/www")),
+        );
+        let config = RuntimeConfig { targets };
         persist_config(&config, &path).await.unwrap();
         let contents = tokio::fs::read_to_string(&path).await.unwrap();
         assert!(contents.contains("a.com"));
-        assert!(contents.contains("1.2.3.4:80"));
+        assert!(contents.contains("http://1.2.3.4:80"));
+        assert!(contents.contains("static.com"));
+        assert!(contents.contains("file:///var/www"));
     }
 
     #[tokio::test]
@@ -93,7 +87,7 @@ key = "/path/key.pem"
 
 [[targets]]
 host = "old.com"
-address = "1.1.1.1:80"
+backend = "http://1.1.1.1:80"
 "#,
         )
         .await
@@ -102,12 +96,9 @@ address = "1.1.1.1:80"
         let mut targets = HashMap::new();
         targets.insert(
             "new.com".to_string(),
-            "2.2.2.2:80".parse::<SocketAddr>().unwrap(),
+            TargetBackend::Http("2.2.2.2:80".parse().unwrap()),
         );
-        let config = RuntimeConfig {
-            targets,
-            static_dirs: HashMap::new(),
-        };
+        let config = RuntimeConfig { targets };
         persist_config(&config, &path).await.unwrap();
         let contents = tokio::fs::read_to_string(&path).await.unwrap();
         // Routing changed

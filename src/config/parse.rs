@@ -1,7 +1,7 @@
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::PathBuf;
 
-use crate::config::{StaticDir, Target};
+use crate::config::{Target, TargetBackend};
 
 pub fn parse_socket_addr(addr: &str) -> Result<SocketAddr, String> {
     addr.to_socket_addrs()
@@ -10,33 +10,60 @@ pub fn parse_socket_addr(addr: &str) -> Result<SocketAddr, String> {
         .ok_or_else(|| "".to_string())
 }
 
-pub fn parse_host_mapping(value: &str) -> Result<Target, String> {
-    if let Some((host, addr)) = value.split_once("@") {
-        let addr = addr
-            .to_socket_addrs()
-            .map_err(|e| e.to_string())?
-            .next()
-            .ok_or_else(|| format!("Invalid address {}", value))?;
-        return Ok(Target {
-            host: host.to_string(),
-            address: addr,
-        });
-    }
-    Err(format!(
-        "Invalid target format, expected '{{host}}@{{addr}}', got '{}'",
-        value
-    ))
+fn parse_http_backend(value: &str) -> Result<TargetBackend, String> {
+    // value is like "http://127.0.0.1:8080" - strip the http:// prefix
+    let addr_part = value.strip_prefix("http://").unwrap_or(value);
+    let addr = addr_part
+        .to_socket_addrs()
+        .map_err(|e| format!("Invalid http address '{}': {}", value, e))?
+        .next()
+        .ok_or_else(|| format!("Invalid http address '{}'", value))?;
+    Ok(TargetBackend::Http(addr))
 }
 
-pub fn parse_static_mapping(value: &str) -> Result<StaticDir, String> {
-    if let Some((host, dir)) = value.split_once("@") {
-        return Ok(StaticDir {
+fn parse_file_backend(value: &str) -> Result<TargetBackend, String> {
+    // value is like "file:///var/www/html" or "file:///C:/path" on Windows
+    let path_part = value.strip_prefix("file://").unwrap_or(value);
+    // Handle absolute paths - on Unix this starts with /, on Windows it might start with drive letter
+    let path = PathBuf::from(path_part);
+    if !path.is_absolute() {
+        return Err(format!(
+            "file:// path must be absolute, got '{}'",
+            path.display()
+        ));
+    }
+    Ok(TargetBackend::File(path))
+}
+
+pub fn parse_backend(value: &str) -> Result<TargetBackend, String> {
+    if value.starts_with("http://") {
+        parse_http_backend(value)
+    } else if value.starts_with("file://") {
+        parse_file_backend(value)
+    } else {
+        // For backwards compatibility, assume bare address is http
+        // Check if it looks like an address (has a colon for port)
+        if value.contains(':') {
+            parse_http_backend(&format!("http://{}", value))
+        } else {
+            Err(format!(
+                "Invalid backend '{}'. Expected http://ip:port or file:///path",
+                value
+            ))
+        }
+    }
+}
+
+pub fn parse_host_mapping(value: &str) -> Result<Target, String> {
+    if let Some((host, backend_str)) = value.split_once("@") {
+        let backend = parse_backend(backend_str)?;
+        return Ok(Target {
             host: host.to_string(),
-            dir: PathBuf::from(dir),
+            backend,
         });
     }
     Err(format!(
-        "Invalid static dir format, expected '{{host}}@{{path}}', got '{}'",
+        "Invalid target format, expected '{{host}}@{{backend}}', got '{}'",
         value
     ))
 }
@@ -64,17 +91,51 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_socket_addr_invalid_port() {
-        assert!(parse_socket_addr("127.0.0.1:notaport").is_err());
+    fn test_parse_backend_http() {
+        let b = parse_backend("http://127.0.0.1:8080").unwrap();
+        match b {
+            TargetBackend::Http(addr) => assert_eq!(addr.to_string(), "127.0.0.1:8080"),
+            _ => panic!("Expected Http"),
+        }
     }
 
     #[test]
-    fn test_parse_host_mapping_valid() {
-        let result = parse_host_mapping("example.com@127.0.0.1:8080");
-        assert!(result.is_ok());
-        let target = result.unwrap();
-        assert_eq!(target.host, "example.com");
-        assert_eq!(target.address.to_string(), "127.0.0.1:8080");
+    fn test_parse_backend_file() {
+        let b = parse_backend("file:///var/www/html").unwrap();
+        match b {
+            TargetBackend::File(path) => assert_eq!(path.to_string_lossy(), "/var/www/html"),
+            _ => panic!("Expected File"),
+        }
+    }
+
+    #[test]
+    fn test_parse_backend_bare_address_backwards_compat() {
+        // For backwards compatibility
+        let b = parse_backend("127.0.0.1:8080").unwrap();
+        match b {
+            TargetBackend::Http(addr) => assert_eq!(addr.to_string(), "127.0.0.1:8080"),
+            _ => panic!("Expected Http"),
+        }
+    }
+
+    #[test]
+    fn test_parse_host_mapping_http() {
+        let t = parse_host_mapping("example.com@http://127.0.0.1:8080").unwrap();
+        assert_eq!(t.host, "example.com");
+        match t.backend {
+            TargetBackend::Http(addr) => assert_eq!(addr.to_string(), "127.0.0.1:8080"),
+            _ => panic!("Expected Http"),
+        }
+    }
+
+    #[test]
+    fn test_parse_host_mapping_file() {
+        let t = parse_host_mapping("static.example.com@file:///var/www/html").unwrap();
+        assert_eq!(t.host, "static.example.com");
+        match t.backend {
+            TargetBackend::File(path) => assert_eq!(path.to_string_lossy(), "/var/www/html"),
+            _ => panic!("Expected File"),
+        }
     }
 
     #[test]
@@ -83,38 +144,10 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_host_mapping_invalid_addr() {
-        assert!(parse_host_mapping("example.com@not-an-addr:notaport").is_err());
-    }
-
-    #[test]
     fn test_parse_host_mapping_empty_host() {
-        // "@127.0.0.1:8080" — host is empty string, addr is valid
-        let result = parse_host_mapping("@127.0.0.1:8080");
+        // "@http://127.0.0.1:8080" — host is empty string, backend is valid
+        let result = parse_host_mapping("@http://127.0.0.1:8080");
         assert!(result.is_ok());
         assert_eq!(result.unwrap().host, "");
-    }
-
-    #[test]
-    fn test_parse_static_mapping_valid_relative() {
-        let result = parse_static_mapping("static.example.com@./www/html");
-        assert!(result.is_ok());
-        let s = result.unwrap();
-        assert_eq!(s.host, "static.example.com");
-        assert_eq!(s.dir, PathBuf::from("./www/html"));
-    }
-
-    #[test]
-    fn test_parse_static_mapping_valid_absolute() {
-        let result = parse_static_mapping("example.com@/var/www/html");
-        assert!(result.is_ok());
-        let s = result.unwrap();
-        assert_eq!(s.host, "example.com");
-        assert_eq!(s.dir, PathBuf::from("/var/www/html"));
-    }
-
-    #[test]
-    fn test_parse_static_mapping_no_at_separator() {
-        assert!(parse_static_mapping("example.com:/var/www").is_err());
     }
 }

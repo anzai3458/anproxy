@@ -48,14 +48,13 @@ async fn main() -> Result<(), Box<dyn StdError + Send + Sync + 'static>> {
             key = %resolved.key.as_ref().unwrap().display(),
         );
     }
-    for (host, dir) in &resolved.static_dirs {
-        tracing::info!(static_dir = true, %host, dir = %dir.display());
+    for (host, backend) in &resolved.targets {
+        tracing::info!(target = %host, backend = %backend);
     }
 
     let addr = resolved.addr;
     let shared_config = Arc::new(RwLock::new(RuntimeConfig {
         targets: resolved.targets,
-        static_dirs: resolved.static_dirs,
     }));
     let stats = Arc::new(stats::Stats::new());
 

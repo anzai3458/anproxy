@@ -10,7 +10,6 @@ use rustls::sign::CertifiedKey;
 
 use crate::admin::api_certs;
 use crate::admin::api_speed_test::{self, SpeedTestLimiter};
-use crate::admin::api_static_dirs;
 use crate::admin::api_stats;
 use crate::admin::api_system;
 use crate::admin::api_targets;
@@ -141,22 +140,6 @@ pub async fn route(
         (Method::DELETE, p) if p.starts_with("/api/targets/") => {
             let host = extract_path_param(p, "/api/targets/").unwrap_or("");
             Ok(api_targets::delete_target(host, &config, config_path.as_ref()).await)
-        }
-
-        // Static dirs CRUD
-        (Method::GET, "/api/static-dirs") => Ok(api_static_dirs::list_static_dirs(&config)),
-        (Method::POST, "/api/static-dirs") => {
-            let body = req.collect().await.map_err(|e| e.to_string())?.to_bytes();
-            Ok(api_static_dirs::add_static_dir(body, &config, config_path.as_ref()).await)
-        }
-        (Method::PUT, p) if p.starts_with("/api/static-dirs/") => {
-            let host = extract_path_param(p, "/api/static-dirs/").unwrap_or("");
-            let body = req.collect().await.map_err(|e| e.to_string())?.to_bytes();
-            Ok(api_static_dirs::update_static_dir(host, body, &config, config_path.as_ref()).await)
-        }
-        (Method::DELETE, p) if p.starts_with("/api/static-dirs/") => {
-            let host = extract_path_param(p, "/api/static-dirs/").unwrap_or("");
-            Ok(api_static_dirs::delete_static_dir(host, &config, config_path.as_ref()).await)
         }
 
         // Stats & Certs

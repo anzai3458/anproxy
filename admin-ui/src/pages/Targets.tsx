@@ -10,7 +10,7 @@ export default function Targets() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Target | null>(null)
   const [formHost, setFormHost] = useState('')
-  const [formAddr, setFormAddr] = useState('')
+  const [formBackend, setFormBackend] = useState('')
   const [formError, setFormError] = useState('')
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
@@ -35,7 +35,7 @@ export default function Targets() {
   const openAdd = () => {
     setEditing(null)
     setFormHost('')
-    setFormAddr('')
+    setFormBackend('')
     setFormError('')
     setModalOpen(true)
   }
@@ -43,7 +43,7 @@ export default function Targets() {
   const openEdit = (t: Target) => {
     setEditing(t)
     setFormHost(t.host)
-    setFormAddr(t.address)
+    setFormBackend(t.backend)
     setFormError('')
     setModalOpen(true)
   }
@@ -54,9 +54,9 @@ export default function Targets() {
     setSaving(true)
     try {
       if (editing) {
-        await api.updateTarget(editing.host, formAddr)
+        await api.updateTarget(editing.host, formBackend)
       } else {
-        await api.addTarget(formHost, formAddr)
+        await api.addTarget(formHost, formBackend)
       }
       setModalOpen(false)
       await fetch()
@@ -100,13 +100,13 @@ export default function Targets() {
           {/* Header */}
           <div className="hidden sm:grid sm:grid-cols-[1fr_1fr_auto] px-4 py-2 text-[10px] text-text-muted uppercase tracking-widest border-b border-border">
             <span>host</span>
-            <span>address</span>
+            <span>backend</span>
             <span className="w-24 text-right">actions</span>
           </div>
           {items.map((t) => (
             <div key={t.host} className="sm:grid sm:grid-cols-[1fr_1fr_auto] px-4 py-3 border-b border-border last:border-b-0 text-xs items-center">
               <a href={`https://${t.host}:${stats?.proxy_port ?? 443}`} target="_blank" rel="noopener noreferrer" className="text-text font-medium truncate hover:text-accent transition-colors">{t.host}</a>
-              <div className="text-text-dim truncate mt-0.5 sm:mt-0">{t.address}</div>
+              <div className="text-text-dim truncate mt-0.5 sm:mt-0">{t.backend}</div>
               <div className="flex gap-3 justify-end mt-2 sm:mt-0 w-24">
                 <button onClick={() => openEdit(t)} className="text-text-dim hover:text-accent transition-colors cursor-pointer">edit</button>
                 <button
@@ -137,15 +137,18 @@ export default function Targets() {
             />
           </div>
           <div>
-            <label className="block text-[10px] text-text-dim uppercase tracking-widest mb-1.5">address</label>
+            <label className="block text-[10px] text-text-dim uppercase tracking-widest mb-1.5">backend</label>
             <input
               type="text"
-              value={formAddr}
-              onChange={(e) => setFormAddr(e.target.value)}
+              value={formBackend}
+              onChange={(e) => setFormBackend(e.target.value)}
               required
-              placeholder="127.0.0.1:8080"
+              placeholder="http://127.0.0.1:8080 or file:///var/www"
               className="w-full bg-bg border border-border rounded px-3 py-2 text-sm text-text placeholder:text-text-muted focus:outline-none focus:border-accent transition-colors"
             />
+            <p className="text-[10px] text-text-muted mt-1.5">
+              Use http:// for proxy targets or file:/// for static file serving
+            </p>
           </div>
           {formError && (
             <div className="text-red text-xs bg-red/10 border border-red/20 rounded px-3 py-2">{formError}</div>

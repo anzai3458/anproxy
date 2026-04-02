@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { api, type Stats, type Target, type StaticDir, type CertInfo } from '../api.ts'
+import { api, type Stats, type Target, type CertInfo } from '../api.ts'
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -27,19 +27,16 @@ function StatCard({ label, value, sub, color }: { label: string; value: string; 
 export default function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [targets, setTargets] = useState<Target[]>([])
-  const [staticDirs, setStaticDirs] = useState<StaticDir[]>([])
   const [certs, setCerts] = useState<CertInfo | null>(null)
 
   const fetchAll = useCallback(async () => {
-    const [s, t, sd, c] = await Promise.allSettled([
+    const [s, t, c] = await Promise.allSettled([
       api.getStats(),
       api.getTargets(),
-      api.getStaticDirs(),
       api.getCerts(),
     ])
     if (s.status === 'fulfilled') setStats(s.value)
     if (t.status === 'fulfilled') setTargets(t.value)
-    if (sd.status === 'fulfilled') setStaticDirs(sd.value)
     if (c.status === 'fulfilled') setCerts(c.value)
   }, [])
 
@@ -113,45 +110,24 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Quick view: targets + static dirs */}
-      <div className="grid md:grid-cols-2 gap-6">
-        <div>
-          <h2 className="text-xs text-text-dim mb-3">
-            <span className="text-accent">$</span> proxy targets
-            <span className="text-text-muted ml-2">{targets.length}</span>
-          </h2>
-          {targets.length === 0 ? (
-            <p className="text-xs text-text-muted">no targets configured</p>
-          ) : (
-            <div className="bg-surface border border-border rounded-lg overflow-hidden">
-              {targets.map((t) => (
-                <div key={t.host} className="flex items-center justify-between px-4 py-2.5 border-b border-border last:border-b-0 text-xs">
-                  <a href={`https://${t.host}:${stats?.proxy_port ?? 443}`} target="_blank" rel="noopener noreferrer" className="text-text truncate hover:text-accent transition-colors">{t.host}</a>
-                  <span className="text-text-dim ml-3 shrink-0">{t.address}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div>
-          <h2 className="text-xs text-text-dim mb-3">
-            <span className="text-accent">$</span> static dirs
-            <span className="text-text-muted ml-2">{staticDirs.length}</span>
-          </h2>
-          {staticDirs.length === 0 ? (
-            <p className="text-xs text-text-muted">no static dirs configured</p>
-          ) : (
-            <div className="bg-surface border border-border rounded-lg overflow-hidden">
-              {staticDirs.map((s) => (
-                <div key={s.host} className="flex items-center justify-between px-4 py-2.5 border-b border-border last:border-b-0 text-xs">
-                  <span className="text-text truncate">{s.host}</span>
-                  <span className="text-text-dim ml-3 shrink-0 truncate max-w-40">{s.dir}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+      {/* Quick view: targets */}
+      <div>
+        <h2 className="text-xs text-text-dim mb-3">
+          <span className="text-accent">$</span> targets
+          <span className="text-text-muted ml-2">{targets.length}</span>
+        </h2>
+        {targets.length === 0 ? (
+          <p className="text-xs text-text-muted">no targets configured</p>
+        ) : (
+          <div className="bg-surface border border-border rounded-lg overflow-hidden">
+            {targets.map((t) => (
+              <div key={t.host} className="flex items-center justify-between px-4 py-2.5 border-b border-border last:border-b-0 text-xs">
+                <a href={`https://${t.host}:${stats?.proxy_port ?? 443}`} target="_blank" rel="noopener noreferrer" className="text-text truncate hover:text-accent transition-colors">{t.host}</a>
+                <span className="text-text-dim ml-3 shrink-0">{t.backend}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
