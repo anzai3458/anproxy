@@ -82,16 +82,18 @@ async fn main() -> Result<(), Box<dyn StdError + Send + Sync + 'static>> {
 
         loop {
             let (stream, peer_addr) = listener.accept().await?;
-            let fut = process_plain(
-                stream,
-                peer_addr,
-                shared_config.clone(),
-                stats.clone(),
-            );
+            let config = shared_config.clone();
+            let stats_loop = stats.clone();
 
             tokio::spawn(async move {
-                if let Err(err) = fut.await {
+                if let Err(err) = process_plain(
+                    stream,
+                    peer_addr,
+                    config,
+                    stats_loop.clone(),
+                ).await {
                     tracing::error!(peer = %peer_addr, "Connection error: {}", err);
+                    stats_loop.inc_errors();
                 }
             });
         }
@@ -145,18 +147,19 @@ async fn main() -> Result<(), Box<dyn StdError + Send + Sync + 'static>> {
         loop {
             let (stream, peer_addr) = listener.accept().await?;
             let acceptor = acceptor.clone();
-
-            let fut = process(
-                stream,
-                peer_addr,
-                acceptor,
-                shared_config.clone(),
-                stats.clone(),
-            );
+            let config = shared_config.clone();
+            let stats_loop = stats.clone();
 
             tokio::spawn(async move {
-                if let Err(err) = fut.await {
+                if let Err(err) = process(
+                    stream,
+                    peer_addr,
+                    acceptor,
+                    config,
+                    stats_loop.clone(),
+                ).await {
                     tracing::error!(peer = %peer_addr, "TLS accept failed: {}", err);
+                    stats_loop.inc_errors();
                 }
             });
         }

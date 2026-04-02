@@ -59,6 +59,7 @@ export default function System() {
   const [logs, setLogs] = useState<LogEntry[]>([])
   const logRef = useRef<HTMLDivElement>(null)
   const [autoScroll, setAutoScroll] = useState(true)
+  const [levelFilter, setLevelFilter] = useState<string>('ALL')
 
   const fetchMetrics = useCallback(async () => {
     try { setMetrics(await api.getSystemMetrics()) } catch { /* ignore */ }
@@ -87,6 +88,13 @@ export default function System() {
     const { scrollTop, scrollHeight, clientHeight } = logRef.current
     setAutoScroll(scrollHeight - scrollTop - clientHeight < 40)
   }
+
+  const LOG_LEVELS = ['ALL', 'ERROR', 'WARN', 'INFO', 'DEBUG', 'TRACE'] as const
+  const LEVEL_PRIORITY: Record<string, number> = { ERROR: 0, WARN: 1, INFO: 2, DEBUG: 3, TRACE: 4 }
+
+  const filteredLogs = levelFilter === 'ALL'
+    ? logs
+    : logs.filter(entry => (LEVEL_PRIORITY[entry.level] ?? 99) <= (LEVEL_PRIORITY[levelFilter] ?? 99))
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -150,22 +158,39 @@ export default function System() {
           <h2 className="text-xs text-text-dim">
             <span className="text-accent">$</span> logs
           </h2>
-          <button
-            onClick={fetchLogs}
-            className="text-[10px] text-text-dim hover:text-accent transition-colors cursor-pointer"
-          >
-            refresh
-          </button>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1">
+              {LOG_LEVELS.map(level => (
+                <button
+                  key={level}
+                  onClick={() => setLevelFilter(level)}
+                  className={`text-[10px] px-1.5 py-0.5 rounded transition-colors cursor-pointer ${
+                    levelFilter === level
+                      ? 'bg-accent text-bg font-medium'
+                      : 'text-text-dim hover:text-accent'
+                  }`}
+                >
+                  {level}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={fetchLogs}
+              className="text-[10px] text-text-dim hover:text-accent transition-colors cursor-pointer"
+            >
+              refresh
+            </button>
+          </div>
         </div>
         <div
           ref={logRef}
           onScroll={handleLogScroll}
           className="bg-surface border border-border rounded-lg p-3 h-80 overflow-y-auto font-mono text-[11px] leading-relaxed"
         >
-          {logs.length === 0 ? (
+          {filteredLogs.length === 0 ? (
             <div className="text-text-muted">no log entries</div>
           ) : (
-            logs.map((entry, i) => {
+            filteredLogs.map((entry, i) => {
               const time = new Date(entry.timestamp_ms).toLocaleTimeString()
               const levelColor = LEVEL_COLORS[entry.level] || 'text-text'
               return (

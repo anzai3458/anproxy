@@ -111,6 +111,7 @@ pub async fn proxy(
 
     if target_addr.is_none() {
         tracing::warn!(peer = %peer_addr, %host, "no target configured for host");
+        stats.inc_errors();
         return Ok::<Response<BoxBody<Bytes, Error>>, String>(
             Response::builder()
                 .status(StatusCode::NOT_FOUND)
@@ -121,14 +122,24 @@ pub async fn proxy(
 
     let target_addr = target_addr.unwrap();
 
-    let target_stream = TcpStream::connect(target_addr)
-        .await
-        .map_err(|e| e.to_string())?;
+    let target_stream = match TcpStream::connect(target_addr).await {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::error!(peer = %peer_addr, %host, target = %target_addr, "backend connect failed: {}", e);
+            stats.inc_errors();
+            return Err(e.to_string());
+        }
+    };
     let target_io = TokioIo::new(target_stream);
 
-    let (mut target_sender, conn) = hyper::client::conn::http1::handshake(target_io)
-        .await
-        .map_err(|e| e.to_string())?;
+    let (mut target_sender, conn) = match hyper::client::conn::http1::handshake(target_io).await {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::error!(peer = %peer_addr, %host, target = %target_addr, "backend handshake failed: {}", e);
+            stats.inc_errors();
+            return Err(e.to_string());
+        }
+    };
 
     tokio::task::spawn(async move {
         if let Err(err) = conn.with_upgrades().await {
@@ -145,7 +156,14 @@ pub async fn proxy(
 
     if let Some(conn_value) = req_from_client.headers().get(header::CONNECTION) {
         if conn_value != "Upgrade" && conn_value != "upgrade" {
-            let resp = send_request(&mut target_sender, req_from_client).await?;
+            let resp = match send_request(&mut target_sender, req_from_client).await {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::error!(peer = %peer_addr, %host, %method, %path, "backend request failed: {}", e);
+                    stats.inc_errors();
+                    return Err(e);
+                }
+            };
             tracing::info!(
                 peer = %peer_addr, %host, %method, %path,
                 status = resp.status().as_u16(),
@@ -155,7 +173,14 @@ pub async fn proxy(
     }
 
     let client_on_upgrade = upgrade::on(&mut req_from_client);
-    let mut res_from_target = send_request(&mut target_sender, req_from_client).await?;
+    let mut res_from_target = match send_request(&mut target_sender, req_from_client).await {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::error!(peer = %peer_addr, %host, %method, %path, "backend request failed: {}", e);
+            stats.inc_errors();
+            return Err(e);
+        }
+    };
     let target_on_upgrade = upgrade::on(&mut res_from_target);
 
     proxy_upgraded(client_on_upgrade, target_on_upgrade, Arc::clone(&stats));
@@ -174,9 +199,11 @@ fn proxy_upgraded(client_on_upgrade: OnUpgrade, target_on_upgrade: OnUpgrade, st
 
         if let Err(e) = &client_result {
             tracing::warn!("Failed to upgrade client connection: {:?}", e);
+            stats.inc_errors();
         }
         if let Err(e) = &target_result {
             tracing::warn!("Failed to upgrade target connection: {:?}", e);
+            stats.inc_errors();
         }
 
         if let (Ok(client_upgraded), Ok(target_upgraded)) = (client_result, target_result) {
