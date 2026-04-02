@@ -53,8 +53,6 @@ export interface SystemMetrics {
   uptime_secs: number
   process_cpu_percent: number
   process_memory_bytes: number
-  process_disk_read_bytes: number
-  process_disk_written_bytes: number
   system_cpu_percent: number
   system_memory_total: number
   system_memory_used: number

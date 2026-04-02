@@ -18,8 +18,6 @@ pub struct MetricsSnapshot {
     pub uptime_secs: u64,
     pub process_cpu_percent: f32,
     pub process_memory_bytes: u64,
-    pub process_disk_read_bytes: u64,
-    pub process_disk_written_bytes: u64,
     pub system_cpu_percent: f32,
     pub system_memory_total: u64,
     pub system_memory_used: u64,
@@ -67,16 +65,14 @@ pub fn spawn_collector(metrics: Arc<SystemMetrics>) {
 
             let system_cpu = sys.global_cpu_usage();
 
-            let (proc_cpu, proc_mem, proc_disk_read, proc_disk_written) =
+            let (proc_cpu, proc_mem) =
                 if let Some(proc) = sys.process(pid) {
                     (
                         proc.cpu_usage(),
                         proc.memory(),
-                        proc.disk_usage().read_bytes,
-                        proc.disk_usage().written_bytes,
                     )
                 } else {
-                    (0.0, 0, 0, 0)
+                    (0.0, 0)
                 };
 
             let disk_infos: Vec<DiskInfo> = disks
@@ -94,8 +90,6 @@ pub fn spawn_collector(metrics: Arc<SystemMetrics>) {
                 uptime_secs: start.elapsed().as_secs(),
                 process_cpu_percent: proc_cpu,
                 process_memory_bytes: proc_mem,
-                process_disk_read_bytes: proc_disk_read,
-                process_disk_written_bytes: proc_disk_written,
                 system_cpu_percent: system_cpu,
                 system_memory_total: sys.total_memory(),
                 system_memory_used: sys.used_memory(),

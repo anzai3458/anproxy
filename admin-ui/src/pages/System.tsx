@@ -125,14 +125,6 @@ export default function System() {
         </div>
       )}
 
-      {/* Process I/O */}
-      {metrics && (
-        <div className="grid grid-cols-2 gap-3">
-          <StatCard label="disk read" value={formatBytes(metrics.process_disk_read_bytes)} />
-          <StatCard label="disk written" value={formatBytes(metrics.process_disk_written_bytes)} />
-        </div>
-      )}
-
       {/* Disks */}
       {metrics && metrics.disks.length > 0 && (
         <div>
