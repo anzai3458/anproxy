@@ -25,7 +25,7 @@ cargo build --release
 ### CLI
 
 ```
-anproxy [addr] [-t <host@ip:port>...] [-s <host@path>...] [-c <cert>] [-k <key>] [--config-file <file>] [-l <level>] [--admin-addr <addr>] [--admin-user <user>] [--admin-pass <pass>]
+anproxy [addr] [-t <host@backend>...] [-c <cert>] [-k <key>] [--config-file <file>] [-l <level>] [--admin-addr <addr>] [--admin-user <user>] [--admin-pass <pass>]
 ```
 
 **Arguments:**
@@ -33,8 +33,7 @@ anproxy [addr] [-t <host@ip:port>...] [-s <host@path>...] [-c <cert>] [-k <key>]
 | Flag | Description |
 |------|-------------|
 | `addr` | Bind address (e.g. `0.0.0.0:8443`) |
-| `-t`, `--targets` | Host-to-backend mapping: `hostname@ip:port` (repeatable) |
-| `-s`, `--static` | Host-to-directory mapping: `hostname@path` (repeatable) |
+| `-t`, `--targets` | Host-to-backend mapping: `hostname@backend` (repeatable). Backend can be `http://ip:port` or `file:///path` |
 | `-c`, `--cert` | PEM certificate file |
 | `-k`, `--key` | PEM private key file |
 | `--config-file` | TOML config file (CLI flags take precedence) |
@@ -47,9 +46,9 @@ anproxy [addr] [-t <host@ip:port>...] [-s <host@path>...] [-c <cert>] [-k <key>]
 
 ```bash
 anproxy 0.0.0.0:8443 \
-  -t example.com@127.0.0.1:8080 \
-  -t api.example.com@127.0.0.1:9090 \
-  -s static.example.com@/var/www/html \
+  -t example.com@http://127.0.0.1:8080 \
+  -t api.example.com@http://127.0.0.1:9090 \
+  -t static.example.com@file:///var/www/html \
   -c cert.pem \
   -k key.pem
 ```
@@ -66,15 +65,15 @@ log_level = "info"
 
 [[targets]]
 host    = "example.com"
-address = "127.0.0.1:8080"
+backend = "http://127.0.0.1:8080"
 
 [[targets]]
 host    = "api.example.com"
-address = "127.0.0.1:9090"
+backend = "http://127.0.0.1:9090"
 
-[[static_dirs]]
-host = "static.example.com"
-dir  = "/var/www/html"
+[[targets]]
+host    = "static.example.com"
+backend = "file:///var/www/html"
 
 # Management service (optional)
 admin_addr = "127.0.0.1:9090"
@@ -127,8 +126,7 @@ Open `https://127.0.0.1:9090` in a browser to access the management UI. It runs 
 **Features:**
 
 - **Dashboard** — active connections, total requests, errors, per-host stats
-- **Targets** — add, edit, and remove proxy target mappings at runtime
-- **Static dirs** — add, edit, and remove static file directory mappings at runtime
+- **Targets** — add, edit, and remove proxy target mappings at runtime (supports both HTTP backends and static file serving)
 - **Certificates** — view cert expiry, trigger hot-reload
 - **Speed test** — measure download/upload throughput and latency between browser and proxy
 

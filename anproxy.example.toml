@@ -12,22 +12,23 @@ key  = "/etc/anproxy/key.pem"
 # log_level = "info"
 
 # Route incoming requests to backends based on the Host header.
-# Add one [[targets]] block per virtual host.
+# Each [[targets]] entry maps a host to a backend URL.
+#
+# Backend formats:
+#   http://ip:port   — proxy to an HTTP backend
+#   file:///path     — serve static files from a directory
 
 [[targets]]
 host    = "example.com"
-address = "127.0.0.1:8080"
+backend = "http://127.0.0.1:8080"
 
 [[targets]]
 host    = "api.example.com"
-address = "127.0.0.1:9090"
+backend = "http://127.0.0.1:9090"
 
-# Serve static files from a local directory instead of proxying.
-# Add one [[static_dirs]] block per virtual host.
-
-# [[static_dirs]]
-# host = "static.example.com"
-# dir  = "/var/www/html"
+[[targets]]
+host    = "static.example.com"
+backend = "file:///var/www/html"
 
 # Management service — optional web UI for live routing config,
 # monitoring, certificate management, and network speed testing.
