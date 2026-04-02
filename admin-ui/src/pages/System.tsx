@@ -99,8 +99,9 @@ export default function System() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <h1 className="text-sm font-semibold text-text-dim">
+      <h1 className="text-sm font-semibold text-text-dim flex items-center gap-2">
         <span className="text-accent">~</span> system
+        <CircleTimer interval={5000} size={14} strokeWidth={1.5} className="text-accent" />
       </h1>
 
       {/* Uptime */}
@@ -116,9 +117,6 @@ export default function System() {
         <div>
           <h2 className="text-xs text-text-dim mb-3">
             <span className="text-accent">$</span> memory
-            <span className="inline-flex items-center ml-2 align-middle">
-              <CircleTimer interval={5000} size={14} strokeWidth={1.5} className="text-accent" />
-            </span>
           </h2>
           <div className="bg-surface border border-border rounded-lg overflow-hidden">
             <UsageBar used={metrics.system_memory_used} total={metrics.system_memory_total} label="RAM" />
@@ -134,9 +132,6 @@ export default function System() {
         <div>
           <h2 className="text-xs text-text-dim mb-3">
             <span className="text-accent">$</span> disks
-            <span className="inline-flex items-center ml-2 align-middle">
-              <CircleTimer interval={5000} size={14} strokeWidth={1.5} className="text-accent" />
-            </span>
           </h2>
           <div className="bg-surface border border-border rounded-lg overflow-hidden">
             {metrics.disks.map((d, i) => (
@@ -155,9 +150,8 @@ export default function System() {
       {/* Logs */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xs text-text-dim flex items-center gap-2">
+          <h2 className="text-xs text-text-dim">
             <span className="text-accent">$</span> logs
-            <CircleTimer interval={3000} size={12} strokeWidth={1.5} className="text-accent" />
           </h2>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1">
