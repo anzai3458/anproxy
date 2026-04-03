@@ -7,6 +7,7 @@ import Targets from './pages/Targets.tsx'
 import Certs from './pages/Certs.tsx'
 import SpeedTest from './pages/SpeedTest.tsx'
 import System from './pages/System.tsx'
+import ToastContainer from './components/ToastContainer.tsx'
 
 const AuthContext = createContext<{
   authed: boolean
@@ -123,6 +124,7 @@ export default function App() {
   return (
     <AuthContext value={{ authed, setAuthed }}>
       <HashRouter>
+        <ToastContainer />
         <Routes>
           <Route path="/login" element={authed ? <Navigate to="/" replace /> : <Login />} />
           <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />

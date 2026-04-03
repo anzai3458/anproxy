@@ -1,17 +1,31 @@
+import { toast } from './hooks/useToast.ts';
 const BASE = '/api';
 
 async function request<T = unknown>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-  });
-  if (res.status === 401) {
-    window.dispatchEvent(new CustomEvent('auth:expired'));
-    throw new Error('Session expired');
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      ...options,
+      headers: { 'Content-Type': 'application/json', ...options?.headers },
+    });
+    if (res.status === 401) {
+      window.dispatchEvent(new CustomEvent('auth:expired'));
+      throw new Error('Session expired');
+    }
+    const data = await res.json();
+    if (!data.ok) {
+      const errorMsg = data.error || 'Unknown error';
+      toast.error(errorMsg);
+      throw new Error(errorMsg);
+    }
+    return data.data as T;
+  } catch (err) {
+    if (err instanceof Error && err.message === 'Session expired') {
+      throw err;
+    }
+    const message = err instanceof Error ? err.message : 'Network error';
+    toast.error(message);
+    throw err;
   }
-  const data = await res.json();
-  if (!data.ok) throw new Error(data.error || 'Unknown error');
-  return data.data as T;
 }
 
 export interface Target {
